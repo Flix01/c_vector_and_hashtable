@@ -185,21 +185,24 @@ struct cvh_hashtable_t {
         size_t num_items;
     } buckets[CVH_NUM_HTUINT]; /* CVH_NUM_HTUINT (256 by default) binary-sorted buckets */
 };
-/*#ifdef __cplusplus
+
+// Give global visibility to structs 'cvh_hashtable_t' and 'cvh_hashtable_vector_t'
+#ifdef __cplusplus
+typedef struct cvh_hashtable_t cvh_hashtable_t;
 typedef cvh_hashtable_t::cvh_hashtable_vector_t cvh_hashtable_vector_t;
 #else
 typedef struct cvh_hashtable_t cvh_hashtable_t;
 typedef struct cvh_hashtable_vector_t cvh_hashtable_vector_t;
-#endif*/
+#endif
 
 CVH_API_PRIV struct cvh_hashtable_t* cvh_hashtable_create(size_t item_size_in_bytes,cvh_htuint (*item_hash)(const void* item),int (*item_cmp) (const void* item0,const void* item1),size_t initial_bucket_capacity_in_items)   {
-    struct cvh_hashtable_t* ht = cvh_malloc(sizeof(struct cvh_hashtable_t));
+    cvh_hashtable_t* ht = (cvh_hashtable_t*) cvh_malloc(sizeof(struct cvh_hashtable_t));
     ht->item_size_in_bytes = item_size_in_bytes;
     ht->item_hash = item_hash;
     ht->item_cmp = item_cmp;
     ht->initial_bucket_capacity_in_items = initial_bucket_capacity_in_items>1 ? initial_bucket_capacity_in_items : 1;
     CVH_ASSERT(ht->item_size_in_bytes && ht->item_hash && ht->item_cmp);
-    memset(ht->buckets,0,CVH_NUM_HTUINT*sizeof(struct cvh_hashtable_vector_t));
+    memset(ht->buckets,0,CVH_NUM_HTUINT*sizeof(cvh_hashtable_vector_t));
     return ht;
 }
 CVH_API_PRIV void cvh_hashtable_free(struct cvh_hashtable_t* ht)    {
@@ -207,7 +210,7 @@ CVH_API_PRIV void cvh_hashtable_free(struct cvh_hashtable_t* ht)    {
         const unsigned short max_value = (CVH_NUM_HTUINT-1);
         unsigned short i=0;
         do    {
-            struct cvh_hashtable_vector_t* v = &ht->buckets[i];
+            cvh_hashtable_vector_t* v = &ht->buckets[i];
             if (v->p) {CVH_FREE(v->p);v->p=NULL;v->capacity_in_bytes=0;}
         }
         while (i++!=max_value);
@@ -215,7 +218,7 @@ CVH_API_PRIV void cvh_hashtable_free(struct cvh_hashtable_t* ht)    {
     }
 }
 CVH_API_PRIV void* cvh_hashtable_get_or_insert(struct cvh_hashtable_t* ht,const void* pvalue,int* match) {
-    struct cvh_hashtable_vector_t* v = NULL;
+    cvh_hashtable_vector_t* v = NULL;
     size_t position;unsigned char* vec;
     CVH_ASSERT(ht);
     v = &ht->buckets[ht->item_hash(pvalue)];
@@ -249,7 +252,7 @@ CVH_API_PRIV void* cvh_hashtable_get_or_insert(struct cvh_hashtable_t* ht,const 
     */
 }
 CVH_API_PRIV void* cvh_hashtable_get(struct cvh_hashtable_t* ht,const void* pvalue) {
-    struct cvh_hashtable_vector_t* v = NULL;
+    cvh_hashtable_vector_t* v = NULL;
     size_t position;unsigned char* vec;int match=0;
     CVH_ASSERT(ht);
     v = &ht->buckets[ht->item_hash(pvalue)];
@@ -266,10 +269,10 @@ CVH_API_PRIV void* cvh_hashtable_get(struct cvh_hashtable_t* ht,const void* pval
     return NULL;
 }
 CVH_API_PRIV int cvh_hashtable_remove(struct cvh_hashtable_t* ht,const void* pvalue) {
-    struct cvh_hashtable_vector_t* v = NULL;
+    cvh_hashtable_vector_t* v = NULL;
     size_t position;int match = 0;
     CVH_ASSERT(ht);
-    v = &ht->buckets[ht->item_hash(pvalue)];
+    v = (cvh_hashtable_vector_t*) &ht->buckets[ht->item_hash(pvalue)];
     if (!v->p)  return 0;
     position = cvh_vector_binary_search(v->p,ht->item_size_in_bytes,v->num_items,pvalue,ht->item_cmp,&match);
     if (match) {

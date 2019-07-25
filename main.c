@@ -1,5 +1,9 @@
-//
+// plain C compilation:
 // gcc -O2 -no-pie -fno-pie main.c -o main
+//
+// C++ compilation:
+// gcc -x c++ -O2 -no-pie -fno-pie main.c -o main
+// [or just: g++ -O2 -no-pie -fno-pie main.c -o main]
 //
 // ./main
 // output:
@@ -151,7 +155,7 @@ cvh_free(mystruct_vector);mystruct_vector=NULL;mystruct_vector_size=mystruct_vec
 // hashtable test
 //---------------------------------------------------------------------
 {
-	struct cvh_hashtable_t* myht=NULL;
+	cvh_hashtable_t* myht=NULL;
 	struct myhtitem_key_value item_to_search,*fetched_item;
 	int match=0;
 
@@ -162,7 +166,7 @@ cvh_free(mystruct_vector);mystruct_vector=NULL;mystruct_vector_size=mystruct_vec
     
 	// Fetch 'item_to_search', and, if not found, insert it and give it a 'value'
     item_to_search.a = 100;item_to_search.b = 50;item_to_search.c = 25;    // we don't need to set 'value' here
-	fetched_item = cvh_hashtable_get_or_insert(myht,&item_to_search,&match);CVH_ASSERT(fetched_item);
+	fetched_item = (struct myhtitem_key_value*) cvh_hashtable_get_or_insert(myht,&item_to_search,&match);CVH_ASSERT(fetched_item); // return-value casting is required for C++ compilation only.
     if (!match)  {
 		// item was not present, so we assign 'value'
 		strcpy(fetched_item->value,"100-50-25");	
@@ -173,7 +177,7 @@ cvh_free(mystruct_vector);mystruct_vector=NULL;mystruct_vector_size=mystruct_vec
 	
     // Fetch 'item_to_search', and, if not found, insert it and give it a 'value'
     item_to_search.a = 10;item_to_search.b = 250;item_to_search.c = 125;    // we don't need to set 'value' here
-	fetched_item = cvh_hashtable_get_or_insert(myht,&item_to_search,&match);CVH_ASSERT(fetched_item);
+	fetched_item = (struct myhtitem_key_value*) cvh_hashtable_get_or_insert(myht,&item_to_search,&match);CVH_ASSERT(fetched_item); // return-value casting is required for C++ compilation only
 	if (!match)  {
 		// item was not present, so we assign 'value'
 		strcpy(fetched_item->value,"10-250-125");	
@@ -183,7 +187,7 @@ cvh_free(mystruct_vector);mystruct_vector=NULL;mystruct_vector_size=mystruct_vec
 	printf("item myht[\t%d,\t%d,\t%d]\t[\"%s\"].\n",fetched_item->a,fetched_item->b,fetched_item->c,fetched_item->value);
 	
     // Just fetch 'item_to_search', without inserting it if not found (this call can return NULL)
-    fetched_item = cvh_hashtable_get(myht,&item_to_search);
+    fetched_item = (struct myhtitem_key_value*) cvh_hashtable_get(myht,&item_to_search); // return-value casting is required for C++ compilation only
     if (!fetched_item)  {
 		// item is not present
 		printf("An item with key[\t%d,\t%d,\t%d] is NOT present.\n",item_to_search.a,item_to_search.b,item_to_search.c);
@@ -193,10 +197,10 @@ cvh_free(mystruct_vector);mystruct_vector=NULL;mystruct_vector_size=mystruct_vec
 	// Display all entries (in general they are not sorted, but in this case they should)
 	k=0;printf("All items (generally unsorted):\n");	
 	for (i=0;i<CVH_NUM_HTUINT;i++)	{
-		const struct cvh_hashtable_vector_t* bucket = &myht->buckets[i];
+		const cvh_hashtable_vector_t* bucket = &myht->buckets[i];
 		if (!bucket->p)	continue;
 		for (j=0;j<bucket->num_items;j++)	{
-			const struct myhtitem_key_value* pitem = (const struct myhtitem_key_value*) (bucket->p+myht->item_size_in_bytes*j);
+			const struct myhtitem_key_value* pitem = (const struct myhtitem_key_value*) ((const unsigned char*)bucket->p+myht->item_size_in_bytes*j);
 			printf("%lu) myht[\t%d,\t%d,\t%d]\t[\"%s\"].\n",k++,pitem->a,pitem->b,pitem->c,pitem->value);		
 		}
 	}
@@ -206,7 +210,7 @@ cvh_free(mystruct_vector);mystruct_vector=NULL;mystruct_vector_size=mystruct_vec
 	else printf("Can't removed item [\t%d,\t%d,\t%d], because it's not present.\n",item_to_search.a,item_to_search.b,item_to_search.c);
 
     // Just fetch 'item_to_search', without inserting it if not found (this call can return NULL)
-    fetched_item = cvh_hashtable_get(myht,&item_to_search);
+    fetched_item = (struct myhtitem_key_value*) cvh_hashtable_get(myht,&item_to_search); // return-value casting is required for C++ compilation only
     if (!fetched_item)  {
 		// item is not present
 		printf("An item with key[\t%d,\t%d,\t%d] is NOT present.\n",item_to_search.a,item_to_search.b,item_to_search.c);
