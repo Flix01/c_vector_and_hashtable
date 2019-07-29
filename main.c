@@ -53,6 +53,7 @@ struct myhtitem_key_value {int a,b,c;char value[16];};
 const size_t myhtitem_key_value_sizeinbytes = sizeof(struct myhtitem_key_value);
 // 'myhtitem_key_value' key sorter
 static int myhtitem_key_cmp(const void* pa,const void* pb) {
+	// MANDATORY: only and ALL the 'key' part of the struct MUST be used here (and NOT the 'value' part!!!).
 	const struct myhtitem_key_value* a = (const struct myhtitem_key_value*) pa;
 	const struct myhtitem_key_value* b = (const struct myhtitem_key_value*) pb;
 	if (a->a>b->a) return 1;
@@ -64,7 +65,10 @@ static int myhtitem_key_cmp(const void* pa,const void* pb) {
 	return 0;
 }
 // 'myhtitem_key_value' key hash 
-static inline cvh_htuint myhtitem_key_hash(const void* item)  {return (cvh_htuint)(((const struct myhtitem_key_value *)item)->a/*%CVH_NUM_HTUINT*/);}
+static inline cvh_htuint myhtitem_key_hash(const void* item)  {
+	// MANDATORY: only the 'key' part of the struct (or a sub-part of it) MUST be used here (and NOT the 'value' part!!!).	
+	return (cvh_htuint)(((const struct myhtitem_key_value *)item)->a/*%CVH_NUM_HTUINT*/);
+}
 
 
 

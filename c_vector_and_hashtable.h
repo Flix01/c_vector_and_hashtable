@@ -111,12 +111,12 @@ CVH_API_PRIV CVH_API_INL size_t cvh_vector_linear_search(const void* v,size_t it
     if (num_items==0) return 0;  /* otherwise match will be 1 */
     for (i = 0; i < num_items; i++) {
         cmp = ItemCmp(item_to_search,&vec[i*item_size_in_bytes]);
-        if (cmp>=0) {
+        if (cmp<=0) {
             if (cmp==0 && match) *match=1;
             return i;
         }
     }
-    CVH_ASSERT(i<=num_items);
+    CVH_ASSERT(i==num_items);
     return i;
 }
 CVH_API_PRIV CVH_API_INL size_t cvh_vector_binary_search(const void* v,size_t item_size_in_bytes,size_t num_items,const void* item_to_search,int (*ItemCmp)(const void* item0,const void* item1),int* match)  {
@@ -195,8 +195,8 @@ typedef struct cvh_hashtable_t cvh_hashtable_t;
 typedef struct cvh_hashtable_vector_t cvh_hashtable_vector_t;
 #endif
 
-CVH_API_PRIV struct cvh_hashtable_t* cvh_hashtable_create(size_t item_size_in_bytes,cvh_htuint (*item_hash)(const void* item),int (*item_cmp) (const void* item0,const void* item1),size_t initial_bucket_capacity_in_items)   {
-    cvh_hashtable_t* ht = (cvh_hashtable_t*) cvh_malloc(sizeof(struct cvh_hashtable_t));
+CVH_API_PRIV cvh_hashtable_t* cvh_hashtable_create(size_t item_size_in_bytes,cvh_htuint (*item_hash)(const void* item),int (*item_cmp) (const void* item0,const void* item1),size_t initial_bucket_capacity_in_items)   {
+    cvh_hashtable_t* ht = (cvh_hashtable_t*) cvh_malloc(sizeof(cvh_hashtable_t));
     ht->item_size_in_bytes = item_size_in_bytes;
     ht->item_hash = item_hash;
     ht->item_cmp = item_cmp;
@@ -205,19 +205,33 @@ CVH_API_PRIV struct cvh_hashtable_t* cvh_hashtable_create(size_t item_size_in_by
     memset(ht->buckets,0,CVH_NUM_HTUINT*sizeof(cvh_hashtable_vector_t));
     return ht;
 }
-CVH_API_PRIV void cvh_hashtable_free(struct cvh_hashtable_t* ht)    {
+CVH_API_PRIV void cvh_hashtable_free(cvh_hashtable_t* ht)    {
     if (ht) {
         const unsigned short max_value = (CVH_NUM_HTUINT-1);
         unsigned short i=0;
         do    {
             cvh_hashtable_vector_t* v = &ht->buckets[i];
-            if (v->p) {CVH_FREE(v->p);v->p=NULL;v->capacity_in_bytes=0;}
+            if (v->p) {CVH_FREE(v->p);v->p=NULL;}
+            v->capacity_in_bytes=v->num_items=0;
         }
         while (i++!=max_value);
         CVH_FREE(ht);
     }
 }
-CVH_API_PRIV void* cvh_hashtable_get_or_insert(struct cvh_hashtable_t* ht,const void* pvalue,int* match) {
+CVH_API_PRIV void cvh_hashtable_clear(cvh_hashtable_t* ht) {
+    if (ht) {
+        const unsigned short max_value = (CVH_NUM_HTUINT-1);
+        unsigned short i=0;
+        do    {
+            cvh_hashtable_vector_t* v = &ht->buckets[i];
+            // The following (single) line can probably be commented out to maximize performance
+            if (v->p) {CVH_FREE(v->p);v->p=NULL;v->capacity_in_bytes=0;}
+            v->num_items = 0;
+        }
+        while (i++!=max_value);
+    }
+}
+CVH_API_PRIV void* cvh_hashtable_get_or_insert(cvh_hashtable_t* ht,const void* pvalue,int* match) {
     cvh_hashtable_vector_t* v = NULL;
     size_t position;unsigned char* vec;
     CVH_ASSERT(ht);
@@ -226,32 +240,30 @@ CVH_API_PRIV void* cvh_hashtable_get_or_insert(struct cvh_hashtable_t* ht,const 
 
     /* slightly faster */
     if (v->num_items==0)    {position=0;*match=0;}
-    position =  v->num_items>2 ? cvh_vector_binary_search(v->p,ht->item_size_in_bytes,v->num_items,pvalue,ht->item_cmp,match) :
-                cvh_vector_linear_search(v->p,ht->item_size_in_bytes,v->num_items,pvalue,ht->item_cmp,match);
-    /* slightly slower */
-    //position = cvh_vector_binary_search(v->p,ht->item_size_in_bytes,v->num_items,pvalue,ht->item_cmp,match);
+    else {
+        position =  v->num_items>2 ? cvh_vector_binary_search(v->p,ht->item_size_in_bytes,v->num_items,pvalue,ht->item_cmp,match) :
+                    cvh_vector_linear_search(v->p,ht->item_size_in_bytes,v->num_items,pvalue,ht->item_cmp,match);
+        /* slightly slower */
+        //position = cvh_vector_binary_search(v->p,ht->item_size_in_bytes,v->num_items,pvalue,ht->item_cmp,match);
+    }
 
     if (*match) {
         vec = (unsigned char*) v->p;
         return &vec[position*ht->item_size_in_bytes];
     }
-    // we must insert an item at 'index'
-    cvh_vector_realloc(&v->p,(v->num_items+1)*ht->item_size_in_bytes,&v->capacity_in_bytes);
-    cvh_vector_insert_at(v->p,ht->item_size_in_bytes,v->num_items,pvalue,position);
-    vec = (unsigned char*) v->p;
-    memcpy(&vec[position*ht->item_size_in_bytes],pvalue,ht->item_size_in_bytes);
-    ++v->num_items;
-    return &vec[position*ht->item_size_in_bytes];
 
-    /* // shorter but less efficient
+    // we must insert an item at 'position'
     cvh_vector_realloc(&v->p,(v->num_items+1)*ht->item_size_in_bytes,&v->capacity_in_bytes);
+    // faster
+    cvh_vector_insert_at(v->p,ht->item_size_in_bytes,v->num_items,pvalue,position);
+    ++v->num_items;
+    /*// slower
     position = cvh_vector_insert_sorted(v->p,ht->item_size_in_bytes,v->num_items,pvalue,ht->item_cmp,match,0);
-    if (!(*match)) ++v->num_items;
+    if (!(*match)) ++v->num_items;*/
     vec = (unsigned char*) v->p;
     return &vec[position*ht->item_size_in_bytes];
-    */
 }
-CVH_API_PRIV void* cvh_hashtable_get(struct cvh_hashtable_t* ht,const void* pvalue) {
+CVH_API_PRIV void* cvh_hashtable_get(cvh_hashtable_t* ht,const void* pvalue) {
     cvh_hashtable_vector_t* v = NULL;
     size_t position;unsigned char* vec;int match=0;
     CVH_ASSERT(ht);
@@ -260,7 +272,8 @@ CVH_API_PRIV void* cvh_hashtable_get(struct cvh_hashtable_t* ht,const void* pval
 
     position =  v->num_items>2 ? cvh_vector_binary_search(v->p,ht->item_size_in_bytes,v->num_items,pvalue,ht->item_cmp,&match) :
                 cvh_vector_linear_search(v->p,ht->item_size_in_bytes,v->num_items,pvalue,ht->item_cmp,&match);
- 
+//    position =  cvh_vector_binary_search(v->p,ht->item_size_in_bytes,v->num_items,pvalue,ht->item_cmp,&match);
+
     if (match) {
         vec = (unsigned char*) v->p;
         return &vec[position*ht->item_size_in_bytes];
@@ -268,7 +281,7 @@ CVH_API_PRIV void* cvh_hashtable_get(struct cvh_hashtable_t* ht,const void* pval
 
     return NULL;
 }
-CVH_API_PRIV int cvh_hashtable_remove(struct cvh_hashtable_t* ht,const void* pvalue) {
+CVH_API_PRIV int cvh_hashtable_remove(cvh_hashtable_t* ht,const void* pvalue) {
     cvh_hashtable_vector_t* v = NULL;
     size_t position;int match = 0;
     CVH_ASSERT(ht);
@@ -282,9 +295,206 @@ CVH_API_PRIV int cvh_hashtable_remove(struct cvh_hashtable_t* ht,const void* pva
     }
     return 0;
 }
-#ifdef __cplusplus
+CVH_API_PRIV size_t cvh_hashtable_get_num_items(cvh_hashtable_t* ht) {
+    CVH_ASSERT(ht);size_t i,sum=0;
+    for (i=0;i<CVH_NUM_HTUINT;i++) sum+=ht->buckets[i].num_items;
+    return sum;
 }
+CVH_API_PRIV int cvh_hashtable_dbg_check(cvh_hashtable_t* ht) {
+    size_t i,j,num_total_items=0;
+    const unsigned char* last_item = NULL;
+    CVH_ASSERT(ht && ht->item_cmp);
+    for (i=0;i<CVH_NUM_HTUINT;i++) {
+        const cvh_hashtable_vector_t* bck = &ht->buckets[i];
+        num_total_items+=bck->num_items;
+        if (bck->p && bck->num_items) {
+            last_item = NULL;
+            for (j=0;j<bck->num_items;j++)  {
+                const unsigned char* item = (const unsigned char*)bck->p+j*ht->item_size_in_bytes;
+                if (last_item) {
+                    if ((*ht->item_cmp)(last_item,item)>=0) {
+                        // When this happens, it can be a wrong user 'item_cmp' function (that cannot sort keys in a consistent way)
+                        printf("[cvh_hashtable_dbg_check] Error: in bucket[%lu]: item_cmp(%lu,%lu)<=0 [num_items=%lu (in bucket)]\n",i,j-1,j,bck->num_items);
+                    }
+                }
+                last_item=item;
+            }
+        }
+        printf("[cvh_hashtable_dbg_check] num_total_items = %lu\n",num_total_items);
+    }
+    return num_total_items;
+}
+#ifdef __cplusplus
+} // extern C
 #endif
+
+#ifdef __cplusplus
+
+#ifndef NO_CPP_CVH_VECTOR_CLASS
+// This is just a gift for C++ users:
+// 'cvh_vector' is a 'std::vector' alternative implementation (well, without full iterator support).
+// code based on 'ImVectorEx' from https://github.com/Flix01/imgui/blob/imgui_with_addons/addons/imguistring/imguistring.h
+// it can be useful only for C++ users that want to avoid STL.
+
+#ifndef CVH_FORCE_INLINE
+#	ifdef _MSC_VER
+#		define CVH_FORCE_INLINE __forceinline
+#	elif (defined(__clang__) || defined(__GNUC__) || defined(__MINGW32__) || defined(__MINGW64__))
+#		define CVH_FORCE_INLINE inline __attribute__((__always_inline__))
+#	else
+#		define CVH_FORCE_INLINE inline
+#	endif
+#endif//CVH_FORCE_INLINE
+
+#ifndef CVH_HAS_PLACEMENT_NEW
+#define CVH_HAS_PLACEMENT_NEW
+struct CvhPlacementNewDummy {};
+inline void* operator new(size_t, CvhPlacementNewDummy, void* ptr) { return ptr; }
+inline void operator delete(void*, CvhPlacementNewDummy, void*) {}
+#define CVH_PLACEMENT_NEW(_PTR)  new(CvhPlacementNewDummy() ,_PTR)
+#endif //CVH_HAS_PLACEMENT_NEW
+
+
+template<typename T>
+class cvh_vector
+{
+public:
+    size_t                      sz;
+    size_t                      capacityInItems;
+    T*                          vec;
+
+    typedef T*         iterator;
+    typedef const T*   const_iterator;
+
+    cvh_vector(size_t size=0)   { sz = capacityInItems = 0; vec = NULL;if (size>0) resize(size);}
+    ~cvh_vector()               { clear(); }
+
+    CVH_FORCE_INLINE bool                 empty() const                   { return sz == 0; }
+    CVH_FORCE_INLINE size_t               size() const                    { return sz; }
+    CVH_FORCE_INLINE size_t               capacity() const                { return capacityInItems; }
+
+    CVH_FORCE_INLINE T&          operator[](size_t i)               { CVH_ASSERT(i < sz); return vec[i]; }
+    CVH_FORCE_INLINE const T&    operator[](size_t i) const         { CVH_ASSERT(i < sz); return vec[i]; }
+
+    void                                  clear()                         {
+        if (vec) {
+            for (size_t i=0,isz=sz;i<isz;i++) vec[i].~T();
+            cvh_free(vec);
+            vec = NULL;
+            sz = capacityInItems = 0;
+        }
+    }
+    CVH_FORCE_INLINE iterator             begin()                         { return vec; }
+    CVH_FORCE_INLINE const_iterator       begin() const                   { return vec; }
+    CVH_FORCE_INLINE iterator             end()                           { return vec + sz; }
+    CVH_FORCE_INLINE const_iterator       end() const                     { return vec + sz; }
+    CVH_FORCE_INLINE T&          front()                         { CVH_ASSERT(sz > 0); return vec[0]; }
+    CVH_FORCE_INLINE const T&    front() const                   { CVH_ASSERT(sz > 0); return vec[0]; }
+    CVH_FORCE_INLINE T&          back()                          { CVH_ASSERT(sz > 0); return vec[sz-1]; }
+    CVH_FORCE_INLINE const T&    back() const                    { CVH_ASSERT(sz > 0); return vec[sz-1]; }
+
+    CVH_FORCE_INLINE size_t                  _grow_capacity(size_t new_size) const   {
+        size_t new_capacity = capacityInItems ? (capacityInItems + capacityInItems/2) : 8; return new_capacity > new_size ? new_capacity : new_size;
+    }
+
+    void                        resize(size_t new_size)            {
+        if (new_size > capacityInItems) {
+            reserve(_grow_capacity(new_size));
+        }
+        if (new_size < sz)   {for (size_t i=new_size;i<sz;i++) vec[i].~T();}
+        else {for (size_t i=sz;i<new_size;i++) {CVH_PLACEMENT_NEW(&vec[i]) T();}}
+        sz = new_size;
+    }
+    void                        resize(size_t new_size,const T& v)            {
+        if (new_size > capacityInItems) {
+            reserve(_grow_capacity(new_size));
+        }
+        if (new_size < sz)   {for (size_t i=new_size;i<sz;i++) vec[i].~T();}
+        else {for (size_t i=sz;i<new_size;i++) {CVH_PLACEMENT_NEW(&vec[i]) T();vec[i]=v;}}
+        sz = new_size;
+    }
+    void                        reserve(size_t new_capacity)
+    {
+        if (new_capacity <= capacityInItems) return;
+
+        // Note that we cannot use cvh_vector_realloc here, because we need to call all dsts/ctrs...
+        // cvh_vector_realloc((void**)&vec,new_capacity*sizeof(T),&capacityInBytes);
+        // That's the main reason why we have kept capacity in T units
+
+        T* new_data = (T*)cvh_malloc((size_t)new_capacity * sizeof(T));
+        for (size_t i=0;i<sz;i++) {
+            CVH_PLACEMENT_NEW(&new_data[i]) T();       // Is this dstr/ctr pair really needed or can I just copy...?
+            new_data[i] = vec[i];
+            vec[i].~T();
+        }
+        //memcpy(new_data, Data, (size_t)Size * sizeof(value_type));
+        cvh_free(vec);
+        vec = new_data;
+        capacityInItems = new_capacity;
+    }
+
+    CVH_FORCE_INLINE  void                 push_back(const T& v)  {
+        if (sz == capacityInItems) {
+            if ((&v >= vec) && (&v < (vec+sz)))  {
+                const T v_val = v;	// Now v can point to old Data field
+                reserve(_grow_capacity(sz+1));
+                CVH_PLACEMENT_NEW(&vec[sz]) T();
+                vec[sz++] = v_val;
+            }
+            else {
+                reserve(_grow_capacity(sz+1));
+                CVH_PLACEMENT_NEW(&vec[sz]) T();
+                vec[sz++] = v;
+            }
+        }
+        else {
+            CVH_PLACEMENT_NEW(&vec[sz]) T();
+            vec[sz++] = v;
+        }
+    }
+    CVH_FORCE_INLINE  void                 pop_back()                      {
+        CVH_ASSERT(sz > 0);
+        if (sz>0) {
+            sz--;
+            vec[sz].~T();
+        }
+    }
+
+    CVH_FORCE_INLINE const cvh_vector<T>& operator=(const cvh_vector<T>& o)  {
+        resize(o.sz);
+        for (size_t i=0;i<o.sz;i++) (*this)[i]=o[i];
+        return *this;
+    }
+
+    // Not too sure about this
+    inline void                 swap(cvh_vector<T>& rhs)          { size_t rhs_size = rhs.sz; rhs.sz = sz; sz = rhs_size; size_t rhs_cap = rhs.capacityInItems; rhs.capacityInItems = capacityInItems; capacityInItems = rhs_cap; T* rhs_data = rhs.vec; rhs.vec = vec; vec = rhs_data; }
+
+
+private:
+
+    // These 2 does not work: should invoke the dstr and cstr, and probably they should not use memmove
+    inline iterator erase(const_iterator it)        {
+        CVH_ASSERT(it >= vec && it < vec+sz);
+        const ptrdiff_t off = it - vec;
+        memmove(vec + off, vec + off + 1, ((size_t)sz - (size_t)off - 1) * sizeof(T));
+        sz--;
+        return vec + off;
+    }
+    inline iterator insert(const_iterator it, const T& v)  {
+        CVH_ASSERT(it >= vec && it <= vec+sz);
+        const ptrdiff_t off = it - vec;
+        if (sz == capacityInItems) reserve(capacityInItems ? capacityInItems * 2 : 4);
+        if (off < (size_t)sz) memmove(vec + off + 1, vec + off, ((size_t)sz - (size_t)off) * sizeof(T));
+        vec[off] = v;
+        sz++;
+        return vec + off;
+    }
+
+};
+
+#endif //NO_CPP_CVH_VECTOR_CLASS
+#endif //__cplusplus
+
 //==================================================================================
 #endif //C_VECTOR_AND_HASHTABLE_H
 
