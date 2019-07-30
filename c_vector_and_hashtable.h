@@ -355,12 +355,11 @@ CVH_API_PRIV int cvh_hashtable_dbg_check(cvh_hashtable_t* ht) {
                 last_item=item;
             }
         }
-#       ifndef CVH_NO_STDIO
-        printf("[cvh_hashtable_dbg_check] num_total_items = %lu\n",num_total_items);
-#       endif
-
-        if (num_sorting_errors>0) {CVH_ASSERT(1);} /* When this happens, it can be a wrong user 'item_cmp' function (that cannot sort keys in a consistent way) */
     }
+#   ifndef CVH_NO_STDIO
+    printf("[cvh_hashtable_dbg_check] num_total_items = %lu\n",num_total_items);
+#   endif
+    CVH_ASSERT(num_sorting_errors==0); /* When this happens, it can be a wrong user 'item_cmp' function (that cannot sort keys in a consistent way) */
     return num_total_items;
 }
 #ifdef __cplusplus
