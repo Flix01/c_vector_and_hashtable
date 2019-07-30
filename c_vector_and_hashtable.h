@@ -1,6 +1,6 @@
-//==================================================================================
-// Plain C implementation of vector and hashtable
-//==================================================================================
+/*==================================================================================*/
+/* Plain C implementation of vector and hashtable */
+/*==================================================================================*/
 /*zlib License
 
 Copyright (c) 2019 Flix
@@ -30,7 +30,7 @@ extern "C" {
 #endif
 
 #ifndef CVH_MALLOC
-#include <stdlib.h>	// malloc/realloc/free
+#include <stdlib.h>	/* malloc/realloc/free */
 #define CVH_MALLOC(X) malloc(X)
 #endif
 
@@ -42,42 +42,73 @@ extern "C" {
 #define CVH_REALLOC(x,y) realloc((x),(y))
 #endif
 
-#define CVH_API_PRIV static
-#define CVH_API_IMPL /*no-op*/
-#define CVH_API_INL inline
-
-#include <stddef.h> // size_t
-
-#ifndef CVH_ASSERT
-#include <assert.h>
-#define CVH_ASSERT(X) assert((X))
+#ifndef CVH_API_PRIV
+#   define CVH_API_PRIV static
+#endif
+#ifndef CVH_API_IMPL
+#   define CVH_API_IMPL /*no-op*/
+#endif
+#ifndef CVH_API_INL
+#   define CVH_API_INL __inline /* if not recognized, try _inline or just inline (__inline should be widely supported by old C compilers) */
 #endif
 
-#include <stdio.h> //fprintf,printf,stderr  TODO: make it optional
+#include <stddef.h> /* size_t */
 
-#include <string.h> //memcpy,memmove
+#if (defined (NDEBUG) || defined (_NDEBUG))
+#   undef CVH_NO_ASSERT
+#   define CVH_NO_ASSERT
+#   undef CVH_NO_STDIO
+#   define CVH_NO_STDIO
+#   undef CVH_NO_STDLIB
+#   define CVH_NO_STDLIB
+#endif
+
+#ifndef CVH_ASSERT
+#   ifdef CVH_NO_ASSERT
+#       define CVH_ASSERT(X) /*no-op*/
+#   else
+#       include <assert.h>
+#       define CVH_ASSERT(X) assert((X))
+#   endif
+#endif
+#ifndef CVH_NO_STDIO
+#   include <stdio.h> /*fprintf,printf,stderr*/
+#endif
+#ifndef CVH_NO_STDLIB
+#   include <stdlib.h> /*exit*/
+#endif
+
+#include <string.h> /*memcpy,memmove,memset*/
 
 /* base memory helpers */
 CVH_API_IMPL void* cvh_malloc(size_t size) {
     void* p = CVH_MALLOC(size);
     if (!p)	{
-        CVH_ASSERT(0);	// No more memory error
+        CVH_ASSERT(0);	/* No more memory error */
+#       ifndef CVH_NO_STDIO
         fprintf(stderr,"CVH_ERROR: cvh_malloc(...) failed. Not enough memory.\n");
+#       endif
+#       ifndef CVH_NO_STDLIB
         exit(1);
+#       endif
     }
     return p;
 }
 CVH_API_IMPL void cvh_free(void* p)                         {CVH_FREE(p);}
-//CVH_API_PRIV void* cvh_realloc(void *ptr, size_t new_size)  {return CVH_REALLOC(ptr,new_size);}
+/*CVH_API_PRIV void* cvh_realloc(void *ptr, size_t new_size)  {return CVH_REALLOC(ptr,new_size);}*/
 CVH_API_PRIV void* cvh_safe_realloc(void** const ptr, size_t new_size)  {
     void *ptr2 = CVH_REALLOC(*ptr,new_size);
     CVH_ASSERT(new_size!=0);    /* undefined behaviour */
     if (ptr2) *ptr=ptr2;
     else {
         CVH_FREE(*ptr);*ptr=NULL;
-        CVH_ASSERT(0);	// No more memory error
+        CVH_ASSERT(0);	/* No more memory error */
+#       ifndef CVH_NO_STDIO
         fprintf(stderr,"CVH_ERROR: cvh_safe_realloc(...) failed. Not enough memory.\n");
+#       endif
+#       ifndef CVH_NO_STDLIB
         exit(1);
+#       endif
     }
     return ptr2;
 }
@@ -85,7 +116,7 @@ CVH_API_PRIV void* cvh_safe_realloc(void** const ptr, size_t new_size)  {
 
 /* vector helpers */
 CVH_API_PRIV CVH_API_INL void* cvh_vector_realloc(void** const pvector,size_t new_size_in_bytes,size_t* pvector_capacity_in_bytes)  {
-    // grows-only!
+    /* grows-only! */
     const size_t vector_capacity_in_bytes = *pvector_capacity_in_bytes;
     if (new_size_in_bytes>vector_capacity_in_bytes) {
         (*pvector_capacity_in_bytes)=vector_capacity_in_bytes + (new_size_in_bytes-vector_capacity_in_bytes)+vector_capacity_in_bytes/2;
@@ -166,14 +197,15 @@ CVH_API_PRIV CVH_API_INL void cvh_vector_remove_at(void* v,size_t item_size_in_b
 
 
 /* hashtable helpers */
-//#define CVH_HASTABLE_UNSIGNED_SHORT   // much more memory vs some ms faster (better define it in client code if necessary)
+/* #define CVH_HASTABLE_UNSIGNED_SHORT */  /* much more memory vs some ms faster (better define it in client code if necessary) */
 #ifndef CVH_HASTABLE_UNSIGNED_SHORT
-typedef unsigned char cvh_htuint;
-#define CVH_NUM_HTUINT 256
-#else // CVH_HASTABLE_UNSIGNED_SHORT
-typedef unsigned short cvh_htuint;
-#define CVH_NUM_HTUINT 65536
-#endif // CVH_HASTABLE_UNSIGNED_SHORT
+    typedef unsigned char cvh_htuint;
+#   define CVH_NUM_HTUINT 256
+#else
+    typedef unsigned short cvh_htuint;
+#   define CVH_NUM_HTUINT 65536
+#endif
+
 struct cvh_hashtable_t {
     size_t item_size_in_bytes;
     cvh_htuint (*item_hash)(const void* item);
@@ -186,7 +218,7 @@ struct cvh_hashtable_t {
     } buckets[CVH_NUM_HTUINT]; /* CVH_NUM_HTUINT (256 by default) binary-sorted buckets */
 };
 
-// Give global visibility to structs 'cvh_hashtable_t' and 'cvh_hashtable_vector_t'
+/* Give global visibility to structs 'cvh_hashtable_t' and 'cvh_hashtable_vector_t' */
 #ifdef __cplusplus
 typedef struct cvh_hashtable_t cvh_hashtable_t;
 typedef cvh_hashtable_t::cvh_hashtable_vector_t cvh_hashtable_vector_t;
@@ -224,7 +256,7 @@ CVH_API_PRIV void cvh_hashtable_clear(cvh_hashtable_t* ht) {
         unsigned short i=0;
         do    {
             cvh_hashtable_vector_t* v = &ht->buckets[i];
-            // The following (single) line can probably be commented out to maximize performance
+            /* The following (single) line can probably be commented out to maximize performance */
             if (v->p) {CVH_FREE(v->p);v->p=NULL;v->capacity_in_bytes=0;}
             v->num_items = 0;
         }
@@ -244,7 +276,7 @@ CVH_API_PRIV void* cvh_hashtable_get_or_insert(cvh_hashtable_t* ht,const void* p
         position =  v->num_items>2 ? cvh_vector_binary_search(v->p,ht->item_size_in_bytes,v->num_items,pvalue,ht->item_cmp,match) :
                     cvh_vector_linear_search(v->p,ht->item_size_in_bytes,v->num_items,pvalue,ht->item_cmp,match);
         /* slightly slower */
-        //position = cvh_vector_binary_search(v->p,ht->item_size_in_bytes,v->num_items,pvalue,ht->item_cmp,match);
+        /* position = cvh_vector_binary_search(v->p,ht->item_size_in_bytes,v->num_items,pvalue,ht->item_cmp,match); */
     }
 
     if (*match) {
@@ -252,13 +284,13 @@ CVH_API_PRIV void* cvh_hashtable_get_or_insert(cvh_hashtable_t* ht,const void* p
         return &vec[position*ht->item_size_in_bytes];
     }
 
-    // we must insert an item at 'position'
+    /* we must insert an item at 'position' */
     cvh_vector_realloc(&v->p,(v->num_items+1)*ht->item_size_in_bytes,&v->capacity_in_bytes);
-    // faster
+    /* faster */
     cvh_vector_insert_at(v->p,ht->item_size_in_bytes,v->num_items,pvalue,position);
     ++v->num_items;
-    /*// slower
-    position = cvh_vector_insert_sorted(v->p,ht->item_size_in_bytes,v->num_items,pvalue,ht->item_cmp,match,0);
+    /* slower */
+    /*position = cvh_vector_insert_sorted(v->p,ht->item_size_in_bytes,v->num_items,pvalue,ht->item_cmp,match,0);
     if (!(*match)) ++v->num_items;*/
     vec = (unsigned char*) v->p;
     return &vec[position*ht->item_size_in_bytes];
@@ -272,7 +304,7 @@ CVH_API_PRIV void* cvh_hashtable_get(cvh_hashtable_t* ht,const void* pvalue) {
 
     position =  v->num_items>2 ? cvh_vector_binary_search(v->p,ht->item_size_in_bytes,v->num_items,pvalue,ht->item_cmp,&match) :
                 cvh_vector_linear_search(v->p,ht->item_size_in_bytes,v->num_items,pvalue,ht->item_cmp,&match);
-//    position =  cvh_vector_binary_search(v->p,ht->item_size_in_bytes,v->num_items,pvalue,ht->item_cmp,&match);
+    /* position =  cvh_vector_binary_search(v->p,ht->item_size_in_bytes,v->num_items,pvalue,ht->item_cmp,&match); */
 
     if (match) {
         vec = (unsigned char*) v->p;
@@ -296,12 +328,12 @@ CVH_API_PRIV int cvh_hashtable_remove(cvh_hashtable_t* ht,const void* pvalue) {
     return 0;
 }
 CVH_API_PRIV size_t cvh_hashtable_get_num_items(cvh_hashtable_t* ht) {
-    CVH_ASSERT(ht);size_t i,sum=0;
+    size_t i,sum=0;CVH_ASSERT(ht);
     for (i=0;i<CVH_NUM_HTUINT;i++) sum+=ht->buckets[i].num_items;
     return sum;
 }
 CVH_API_PRIV int cvh_hashtable_dbg_check(cvh_hashtable_t* ht) {
-    size_t i,j,num_total_items=0;
+    size_t i,j,num_total_items=0,num_sorting_errors=0;
     const unsigned char* last_item = NULL;
     CVH_ASSERT(ht && ht->item_cmp);
     for (i=0;i<CVH_NUM_HTUINT;i++) {
@@ -313,22 +345,29 @@ CVH_API_PRIV int cvh_hashtable_dbg_check(cvh_hashtable_t* ht) {
                 const unsigned char* item = (const unsigned char*)bck->p+j*ht->item_size_in_bytes;
                 if (last_item) {
                     if ((*ht->item_cmp)(last_item,item)>=0) {
-                        // When this happens, it can be a wrong user 'item_cmp' function (that cannot sort keys in a consistent way)
+                        /* When this happens, it can be a wrong user 'item_cmp' function (that cannot sort keys in a consistent way) */
+                        ++num_sorting_errors;
+#                       ifndef CVH_NO_STDIO
                         printf("[cvh_hashtable_dbg_check] Error: in bucket[%lu]: item_cmp(%lu,%lu)<=0 [num_items=%lu (in bucket)]\n",i,j-1,j,bck->num_items);
+#                       endif
                     }
                 }
                 last_item=item;
             }
         }
+#       ifndef CVH_NO_STDIO
         printf("[cvh_hashtable_dbg_check] num_total_items = %lu\n",num_total_items);
+#       endif
+
+        if (num_sorting_errors>0) {CVH_ASSERT(1);} /* When this happens, it can be a wrong user 'item_cmp' function (that cannot sort keys in a consistent way) */
     }
     return num_total_items;
 }
 #ifdef __cplusplus
-} // extern C
+} /* extern C */
 #endif
 
-//==================================================================================
-#endif //C_VECTOR_AND_HASHTABLE_H
+/*==================================================================================*/
+#endif /* C_VECTOR_AND_HASHTABLE_H */
 
 

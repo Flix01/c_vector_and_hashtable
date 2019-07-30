@@ -1,13 +1,16 @@
-// plain C compilation:
-// gcc -O2 -no-pie -fno-pie main.c -o main
-//
-// C++ compilation:
-// gcc -x c++ -O2 -no-pie -fno-pie main.c -o main
-// [or just: g++ -O2 -no-pie -fno-pie main.c -o main]
-//
-// ./main
-// output:
-/*
+/* 
+-> plain C compilation:
+gcc -O2 -no-pie -fno-pie main.c -o main
+
+-> C++ compilation:
+gcc -x c++ -O2 -no-pie -fno-pie main.c -o main
+[or just: g++ -O2 -no-pie -fno-pie main.c -o main]
+
+-> run 
+./main
+
+-> output: 
+
 VECTOR TEST:
 mystruct_vector[0]={	100,	-20,	50};
 mystruct_vector[1]={	-10,	200,	-5};
@@ -28,6 +31,12 @@ All items (generally unsorted):
 1) myht[	100,	50,	25]	["100-50-25"].
 Removed item [	10,	250,	125]
 An item with key[	10,	250,	125] is NOT present.
+
+
+-> Extra stuff: mingw and (an old) cl compiler command-lines
+x86_64-w64-mingw32-gcc -mconsole -O2 main.c -o main_mingw.exe
+cl /O2 /MT /Tc main.c /link /out:main_vc.exe user32.lib kernel32.lib
+
 */
 #include "c_vector_and_hashtable.h"
 #include <stdio.h> // printf
@@ -65,7 +74,7 @@ static int myhtitem_key_cmp(const void* pa,const void* pb) {
 	return 0;
 }
 // 'myhtitem_key_value' key hash 
-static inline cvh_htuint myhtitem_key_hash(const void* item)  {
+static CVH_API_INL cvh_htuint myhtitem_key_hash(const void* item)  {
 	// MANDATORY: only the 'key' part of the struct (or a sub-part of it) MUST be used here (and NOT the 'value' part!!!).	
 	return (cvh_htuint)(((const struct myhtitem_key_value *)item)->a/*%CVH_NUM_HTUINT*/);
 }
