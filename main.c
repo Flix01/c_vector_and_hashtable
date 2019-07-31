@@ -89,9 +89,9 @@ size_t i,j,k;
 /* vector test */
 /*-----------------------------------------------------------------------------------------*/
 
-/* Mandatory to define: 'mystruct_vector','mystruct_vector_size' and 'mystruct_vector_capacity_in_bytes' */
+/* Mandatory to define: 'mystruct_vector','mystruct_vector_size' and 'mystruct_vector_capacity_in_items' */
 struct mystruct *mystruct_vector=NULL;
-size_t mystruct_vector_size = 0, mystruct_vector_capacity_in_bytes = 0;
+size_t mystruct_vector_size = 0, mystruct_vector_capacity_in_items = 0;
 
 /*------------------------------------------------------------------*/
 /* vector test */
@@ -102,7 +102,7 @@ struct mystruct * mystruct_p =NULL;	/* just a ptr we'll use later...*/
 printf("VECTOR TEST:\n");
 
 /* add capacity for two (more) items */
-cvh_vector_realloc((void**)&mystruct_vector,(mystruct_vector_size+2)*mystructsizeinbytes,&mystruct_vector_capacity_in_bytes);
+cvh_vector_reserve((void**)&mystruct_vector,mystruct_vector_size+2,&mystruct_vector_capacity_in_items,mystructsizeinbytes);
 
 /* fill the first new item (and increment 'mystruct_vector_size'): */              
 mystruct_p = &mystruct_vector[mystruct_vector_size++];
@@ -116,7 +116,7 @@ mystruct_p->a=-10;mystruct_p->b=200;mystruct_p->c=-5;
 for (i=0;i<mystruct_vector_size;i++) printf("mystruct_vector[%lu]={\t%d,\t%d,\t%d};\n",i,mystruct_vector[i].a,mystruct_vector[i].b,mystruct_vector[i].c);
 
 /* delete vector */
-cvh_free(mystruct_vector);mystruct_vector=NULL;mystruct_vector_size=mystruct_vector_capacity_in_bytes=0;
+cvh_free(mystruct_vector);mystruct_vector=NULL;mystruct_vector_size=mystruct_vector_capacity_in_items=0;
 }
 
 /*---------------------------------------------------------------------*/
@@ -130,7 +130,7 @@ size_t position = 0;int match=0;
 printf("SORTED VECTOR TEST:\n");
 
 /* add capacity for 5 (more) items */
-cvh_vector_realloc((void**)&mystruct_vector,(mystruct_vector_size+5)*mystructsizeinbytes,&mystruct_vector_capacity_in_bytes);
+cvh_vector_reserve((void**)&mystruct_vector,mystruct_vector_size+5,&mystruct_vector_capacity_in_items,mystructsizeinbytes);
 
 /* IMPORTANT: before calling 'cvh_vector_insert_sorted', 'mystruct_vector' my have space for at least one MORE item to insert. */
 /* we add 5 'a-sorted' items (please note that we increment 'mystruct_vector_size' each call): */
@@ -160,7 +160,7 @@ if (match) printf("found at mystruct_vector[%lu].\n",position);
 else printf("not found.\n");
 
 /* delete vector */
-cvh_free(mystruct_vector);mystruct_vector=NULL;mystruct_vector_size=mystruct_vector_capacity_in_bytes=0;
+cvh_free(mystruct_vector);mystruct_vector=NULL;mystruct_vector_size=mystruct_vector_capacity_in_items=0;
 
 } 
 

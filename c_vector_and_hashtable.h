@@ -29,17 +29,27 @@ freely, subject to the following restrictions:
 extern "C" {
 #endif
 
+#if (defined (NDEBUG) || defined (_NDEBUG))
+#   undef CVH_NO_ASSERT
+#   define CVH_NO_ASSERT
+#   undef CVH_NO_STDIO
+#   define CVH_NO_STDIO
+#   undef CVH_NO_STDLIB
+#   define CVH_NO_STDLIB
+#endif
+
 #ifndef CVH_MALLOC
-#include <stdlib.h>	/* malloc/realloc/free */
-#define CVH_MALLOC(X) malloc(X)
+#   undef CVH_NO_STDLIB  /* stdlib cannot be avoided in this case */
+#   include <stdlib.h>	 /* malloc/realloc/free */
+#   define CVH_MALLOC(X) malloc(X)
 #endif
 
 #ifndef CVH_FREE
-#define CVH_FREE(X) free(X)
+#   define CVH_FREE(X) free(X)
 #endif
 
 #ifndef CVH_REALLOC
-#define CVH_REALLOC(x,y) realloc((x),(y))
+#   define CVH_REALLOC(x,y) realloc((x),(y))
 #endif
 
 #ifndef CVH_API_PRIV
@@ -54,14 +64,6 @@ extern "C" {
 
 #include <stddef.h> /* size_t */
 
-#if (defined (NDEBUG) || defined (_NDEBUG))
-#   undef CVH_NO_ASSERT
-#   define CVH_NO_ASSERT
-#   undef CVH_NO_STDIO
-#   define CVH_NO_STDIO
-#   undef CVH_NO_STDLIB
-#   define CVH_NO_STDLIB
-#endif
 
 #ifndef CVH_ASSERT
 #   ifdef CVH_NO_ASSERT
@@ -115,12 +117,21 @@ CVH_API_PRIV void* cvh_safe_realloc(void** const ptr, size_t new_size)  {
 
 
 /* vector helpers */
-CVH_API_PRIV CVH_API_INL void* cvh_vector_realloc(void** const pvector,size_t new_size_in_bytes,size_t* pvector_capacity_in_bytes)  {
-    /* grows-only! */
+/*CVH_API_PRIV CVH_API_INL void* cvh_vector_realloc(void** const pvector,size_t new_size_in_bytes,size_t* pvector_capacity_in_bytes)  {
+     grows-only!
     const size_t vector_capacity_in_bytes = *pvector_capacity_in_bytes;
     if (new_size_in_bytes>vector_capacity_in_bytes) {
         (*pvector_capacity_in_bytes)=vector_capacity_in_bytes + (new_size_in_bytes-vector_capacity_in_bytes)+vector_capacity_in_bytes/2;
         return cvh_safe_realloc(pvector,*pvector_capacity_in_bytes);
+    }
+    return *pvector;
+}*/
+/* same as 'cvh_vector_realloc', but capacity is in number of items, and needs one more argument */
+CVH_API_PRIV CVH_API_INL void* cvh_vector_reserve(void** const pvector,size_t new_size_in_items,size_t* pvector_capacity_in_items,const size_t sizeof_item_type_in_bytes)  {
+    /* grows-only! */
+    if (new_size_in_items>*pvector_capacity_in_items) {
+        (*pvector_capacity_in_items)=(*pvector_capacity_in_items) + (new_size_in_items-(*pvector_capacity_in_items))+(*pvector_capacity_in_items)/2;
+        return cvh_safe_realloc(pvector,(*pvector_capacity_in_items)*sizeof_item_type_in_bytes);
     }
     return *pvector;
 }
@@ -213,7 +224,7 @@ struct cvh_hashtable_t {
     size_t initial_bucket_capacity_in_items;
     struct cvh_hashtable_vector_t   {
         void* p;
-        size_t capacity_in_bytes;
+        size_t capacity_in_items;
         size_t num_items;
     } buckets[CVH_NUM_HTUINT]; /* CVH_NUM_HTUINT (256 by default) binary-sorted buckets */
 };
@@ -244,7 +255,7 @@ CVH_API_PRIV void cvh_hashtable_free(cvh_hashtable_t* ht)    {
         do    {
             cvh_hashtable_vector_t* v = &ht->buckets[i];
             if (v->p) {CVH_FREE(v->p);v->p=NULL;}
-            v->capacity_in_bytes=v->num_items=0;
+            v->capacity_in_items=v->num_items=0;
         }
         while (i++!=max_value);
         CVH_FREE(ht);
@@ -257,7 +268,7 @@ CVH_API_PRIV void cvh_hashtable_clear(cvh_hashtable_t* ht) {
         do    {
             cvh_hashtable_vector_t* v = &ht->buckets[i];
             /* The following (single) line can probably be commented out to maximize performance */
-            if (v->p) {CVH_FREE(v->p);v->p=NULL;v->capacity_in_bytes=0;}
+            if (v->p) {CVH_FREE(v->p);v->p=NULL;v->capacity_in_items=0;}
             v->num_items = 0;
         }
         while (i++!=max_value);
@@ -268,7 +279,10 @@ CVH_API_PRIV void* cvh_hashtable_get_or_insert(cvh_hashtable_t* ht,const void* p
     size_t position;unsigned char* vec;
     CVH_ASSERT(ht);
     v = &ht->buckets[ht->item_hash(pvalue)];
-    if (!v->p)  v->p = cvh_malloc(ht->initial_bucket_capacity_in_items*ht->item_size_in_bytes);
+    if (!v->p)  {
+		v->p = cvh_malloc(ht->initial_bucket_capacity_in_items*ht->item_size_in_bytes);
+		v->capacity_in_items = ht->initial_bucket_capacity_in_items;	
+	}
 
     /* slightly faster */
     if (v->num_items==0)    {position=0;*match=0;}
@@ -285,7 +299,7 @@ CVH_API_PRIV void* cvh_hashtable_get_or_insert(cvh_hashtable_t* ht,const void* p
     }
 
     /* we must insert an item at 'position' */
-    cvh_vector_realloc(&v->p,(v->num_items+1)*ht->item_size_in_bytes,&v->capacity_in_bytes);
+    cvh_vector_reserve(&v->p,v->num_items+1,&v->capacity_in_items,ht->item_size_in_bytes);
     /* faster */
     cvh_vector_insert_at(v->p,ht->item_size_in_bytes,v->num_items,pvalue,position);
     ++v->num_items;
