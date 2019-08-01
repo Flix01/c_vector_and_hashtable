@@ -24,20 +24,23 @@ item={	100,	10,	80}	found at mystruct_vector[2].
 item={	100,	10,	100}	not found.
 HASHTABLE TEST:
 Added item myht[	100,	50,	25]	["100-50-25"].
+Added item myht[	5,	43,	-250]	["5-43-250"].
 Added item myht[	10,	250,	125]	["10-250-125"].
 Fetched item myht[	10,	250,	125]	["10-250-125"].
 All items (generally unsorted):
-0) myht[	10,	250,	125]	["10-250-125"].
-1) myht[	100,	50,	25]	["100-50-25"].
+0) myht[	5,	43,	-250]	["5-43-250"].
+1) myht[	10,	250,	125]	["10-250-125"].
+2) myht[	100,	50,	25]	["100-50-25"].
 Removed item [	10,	250,	125]
 An item with key[	10,	250,	125] is NOT present.
-
 
 -> Extra stuff: mingw and (an old) cl compiler command-lines
 x86_64-w64-mingw32-gcc -mconsole -O2 main.c -o main_mingw.exe
 cl /O2 /MT /Tc main.c /link /out:main_vc.exe user32.lib kernel32.lib
 
 */
+
+/*#define CVH_NUM_HTUINT 32*/  /* optional; must be in [1,65536]. Default is 256. */
 #include "c_vector_and_hashtable.h"
 #include <stdio.h> /* printf */
 
@@ -76,7 +79,11 @@ static int myhtitem_key_cmp(const void* pa,const void* pb) {
 /* 'myhtitem_key_value' key hash  */
 static CVH_API_INL cvh_htuint myhtitem_key_hash(const void* item)  {
 	/* MANDATORY: only the 'key' part of the struct (or a sub-part of it) MUST be used here (and NOT the 'value' part!!!).	*/
-	return (cvh_htuint)(((const struct myhtitem_key_value *)item)->a/*%CVH_NUM_HTUINT*/);
+	return (cvh_htuint)(((const struct myhtitem_key_value *)item)->a
+#   if (CVH_NUM_HTUINT!=256 && CVH_NUM_HTUINT!=65536) /* return value should be in [0,CVH_NUM_HTUINT), but this is already guaranteed in these two cases */
+				%CVH_NUM_HTUINT
+#	endif
+				);
 }
 
 
@@ -187,7 +194,18 @@ cvh_free(mystruct_vector);mystruct_vector=NULL;mystruct_vector_size=mystruct_vec
 	}
 	else printf("Fetched ");
 	printf("item myht[\t%d,\t%d,\t%d]\t[\"%s\"].\n",fetched_item->a,fetched_item->b,fetched_item->c,fetched_item->value);
-	
+
+    /* Fetch 'item_to_search', and, if not found, insert it and give it a 'value' */
+    item_to_search.a = 5;item_to_search.b = 43;item_to_search.c = -250;    /* we don't need to set 'value' here */
+	fetched_item = (struct myhtitem_key_value*) cvh_hashtable_get_or_insert(myht,&item_to_search,&match);CVH_ASSERT(fetched_item); /* return-value casting is required for C++ compilation only */
+	if (!match)  {
+		/* item was not present, so we assign 'value' */
+		strcpy(fetched_item->value,"5-43-250");	
+		printf("Added ");
+	}
+	else printf("Fetched ");
+	printf("item myht[\t%d,\t%d,\t%d]\t[\"%s\"].\n",fetched_item->a,fetched_item->b,fetched_item->c,fetched_item->value);
+		
     /* Fetch 'item_to_search', and, if not found, insert it and give it a 'value' */
     item_to_search.a = 10;item_to_search.b = 250;item_to_search.c = 125;    /* we don't need to set 'value' here */
 	fetched_item = (struct myhtitem_key_value*) cvh_hashtable_get_or_insert(myht,&item_to_search,&match);CVH_ASSERT(fetched_item); /* return-value casting is required for C++ compilation only */
@@ -229,6 +247,10 @@ cvh_free(mystruct_vector);mystruct_vector=NULL;mystruct_vector_size=mystruct_vec
 		printf("An item with key[\t%d,\t%d,\t%d] is NOT present.\n",item_to_search.a,item_to_search.b,item_to_search.c);
 	}
 	else printf("Fetched item myht[\t%d,\t%d,\t%d]\t[\"%s\"].\n",fetched_item->a,fetched_item->b,fetched_item->c,fetched_item->value);
+
+	/* Debug function that can be useful to detect sorting errors and optimize 'myhtitem_key_hash' (to reduce the standard deviation)
+	and 'CVH_NUM_HTUINT' (but the latter is unique for all the 'cvh_hashtable_t' instances) */
+	/*cvh_hashtable_dbg_check(myht);*/
 
 	/* destroy hashtable 'myht' */
 	cvh_hashtable_free(myht);myht=NULL;

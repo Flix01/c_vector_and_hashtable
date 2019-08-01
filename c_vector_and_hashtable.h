@@ -117,16 +117,6 @@ CVH_API_PRIV void* cvh_safe_realloc(void** const ptr, size_t new_size)  {
 
 
 /* vector helpers */
-/*CVH_API_PRIV CVH_API_INL void* cvh_vector_realloc(void** const pvector,size_t new_size_in_bytes,size_t* pvector_capacity_in_bytes)  {
-     grows-only!
-    const size_t vector_capacity_in_bytes = *pvector_capacity_in_bytes;
-    if (new_size_in_bytes>vector_capacity_in_bytes) {
-        (*pvector_capacity_in_bytes)=vector_capacity_in_bytes + (new_size_in_bytes-vector_capacity_in_bytes)+vector_capacity_in_bytes/2;
-        return cvh_safe_realloc(pvector,*pvector_capacity_in_bytes);
-    }
-    return *pvector;
-}*/
-/* same as 'cvh_vector_realloc', but capacity is in number of items, and needs one more argument */
 CVH_API_PRIV CVH_API_INL void* cvh_vector_reserve(void** const pvector,size_t new_size_in_items,size_t* pvector_capacity_in_items,const size_t sizeof_item_type_in_bytes)  {
     /* grows-only! */
     if (new_size_in_items>*pvector_capacity_in_items) {
@@ -208,13 +198,29 @@ CVH_API_PRIV CVH_API_INL void cvh_vector_remove_at(void* v,size_t item_size_in_b
 
 
 /* hashtable helpers */
-/* #define CVH_HASTABLE_UNSIGNED_SHORT */  /* much more memory vs some ms faster (better define it in client code if necessary) */
-#ifndef CVH_HASTABLE_UNSIGNED_SHORT
-    typedef unsigned char cvh_htuint;
-#   define CVH_NUM_HTUINT 256
+/* CVH_NUM_HTUINT:
+-> defines the number of buckets in cvh_hashtable_t.
+-> values returned by the user 'item_hash' function should be in the range [0,CVH_NUM_HTUINT).
+       usually a mod operation (like: return somevalue%CVH_NUM_HTUINT;) is enough, but
+       it can be avoided when CVH_NUM_HTUINT is 256 (the default) or 65536 (its max value).
+*/
+#ifdef CVH_NUM_HTUINT
+#   if CVH_NUM_HTUINT<=0
+#       undef CVH_NUM_HTUINT
+#       define CVH_NUM_HTUINT 256
+#   elif CVH_NUM_HTUINT>65536
+#       undef CVH_NUM_HTUINT
+#       define CVH_NUM_HTUINT 65536
+#   endif
 #else
+#   define CVH_NUM_HTUINT 256
+#endif
+#if CVH_NUM_HTUINT<=256
+    typedef unsigned char cvh_htuint;
+#elif CVH_NUM_HTUINT<=65536
     typedef unsigned short cvh_htuint;
-#   define CVH_NUM_HTUINT 65536
+#else
+#   error Unsupported CVH_NUM_HTUINT
 #endif
 
 struct cvh_hashtable_t {
@@ -276,9 +282,13 @@ CVH_API_PRIV void cvh_hashtable_clear(cvh_hashtable_t* ht) {
 }
 CVH_API_PRIV void* cvh_hashtable_get_or_insert(cvh_hashtable_t* ht,const void* pvalue,int* match) {
     cvh_hashtable_vector_t* v = NULL;
-    size_t position;unsigned char* vec;
+    size_t position;unsigned char* vec;cvh_htuint hash;
     CVH_ASSERT(ht);
-    v = &ht->buckets[ht->item_hash(pvalue)];
+    hash = ht->item_hash(pvalue);
+#   if (CVH_NUM_HTUINT!=256 && CVH_NUM_HTUINT!=65536)
+    CVH_ASSERT(hash<CVH_NUM_HTUINT);    /* user 'item_hash' should return values in [0,CVH_NUM_HTUINT). Please use: return somevalue%CVH_NUM_HTUINT */
+#   endif
+    v = &ht->buckets[hash];
     if (!v->p)  {
 		v->p = cvh_malloc(ht->initial_bucket_capacity_in_items*ht->item_size_in_bytes);
 		v->capacity_in_items = ht->initial_bucket_capacity_in_items;	
@@ -311,9 +321,13 @@ CVH_API_PRIV void* cvh_hashtable_get_or_insert(cvh_hashtable_t* ht,const void* p
 }
 CVH_API_PRIV void* cvh_hashtable_get(cvh_hashtable_t* ht,const void* pvalue) {
     cvh_hashtable_vector_t* v = NULL;
-    size_t position;unsigned char* vec;int match=0;
+    size_t position;unsigned char* vec;cvh_htuint hash;int match=0;
     CVH_ASSERT(ht);
-    v = &ht->buckets[ht->item_hash(pvalue)];
+    hash = ht->item_hash(pvalue);
+#   if (CVH_NUM_HTUINT!=256 && CVH_NUM_HTUINT!=65536)
+    CVH_ASSERT(hash<CVH_NUM_HTUINT);    /* user 'item_hash' should return values in [0,CVH_NUM_HTUINT). Please use: return somevalue%CVH_NUM_HTUINT */
+#   endif
+    v = &ht->buckets[hash];
     if (!v->p || v->num_items==0)  return NULL;
 
     position =  v->num_items>2 ? cvh_vector_binary_search(v->p,ht->item_size_in_bytes,v->num_items,pvalue,ht->item_cmp,&match) :
@@ -347,12 +361,15 @@ CVH_API_PRIV size_t cvh_hashtable_get_num_items(cvh_hashtable_t* ht) {
     return sum;
 }
 CVH_API_PRIV int cvh_hashtable_dbg_check(cvh_hashtable_t* ht) {
-    size_t i,j,num_total_items=0,num_sorting_errors=0;
+    size_t i,j,num_total_items=0,num_sorting_errors=0,min_num_bucket_items=(size_t)-1,max_num_bucket_items=0;
+    double avg_num_bucket_items=0.0,std_deviation=0.0;
     const unsigned char* last_item = NULL;
     CVH_ASSERT(ht && ht->item_cmp);
     for (i=0;i<CVH_NUM_HTUINT;i++) {
         const cvh_hashtable_vector_t* bck = &ht->buckets[i];
         num_total_items+=bck->num_items;
+        if (min_num_bucket_items>bck->num_items) min_num_bucket_items=bck->num_items;
+        if (max_num_bucket_items<bck->num_items) max_num_bucket_items=bck->num_items;
         if (bck->p && bck->num_items) {
             last_item = NULL;
             for (j=0;j<bck->num_items;j++)  {
@@ -370,8 +387,34 @@ CVH_API_PRIV int cvh_hashtable_dbg_check(cvh_hashtable_t* ht) {
             }
         }
     }
+    avg_num_bucket_items = (double)num_total_items/(double) CVH_NUM_HTUINT;
+    if (CVH_NUM_HTUINT<2) {std_deviation=0.;}
+    else {
+        for (i=0;i<CVH_NUM_HTUINT;i++) {
+            double tmp = ht->buckets[i].num_items-avg_num_bucket_items;
+            std_deviation+=tmp*tmp;
+        }
+        std_deviation/=(double)(CVH_NUM_HTUINT-1); /* this is the variance */
+        /* we must calculate its square root now (without depending on <math.h>. Code based on:
+           https://stackoverflow.com/questions/29018864/any-way-to-obtain-square-root-of-a-number-without-using-math-h-and-sqrt
+        */
+        {
+        /*#define SQRT_MINDIFF 2.2250738585072014e-308    smallest positive double*/
+#       define SQRT_MINDIFF 2.25e-308                   /* use for convergence check */
+        double root=std_deviation/3, last, diff=1;
+        if (std_deviation > 0) {
+            do {
+                last = root;
+                root = (root + std_deviation / root) / 2;
+                diff = root - last;
+            } while (diff > SQRT_MINDIFF || diff < -SQRT_MINDIFF);
+            std_deviation = root;
+        }
+#       undef SQRT_MINDIFF
+        }
+    }
 #   ifndef CVH_NO_STDIO
-    printf("[cvh_hashtable_dbg_check] num_total_items = %lu\n",num_total_items);
+    printf("[cvh_hashtable_dbg_check] num_total_items=%lu in %d buckets [items per bucket: mean=%1.3f std_deviation=%1.3f min=%lu max=%lu]\n",num_total_items,CVH_NUM_HTUINT,avg_num_bucket_items,std_deviation,min_num_bucket_items,max_num_bucket_items);
 #   endif
     CVH_ASSERT(num_sorting_errors==0); /* When this happens, it can be a wrong user 'item_cmp' function (that cannot sort keys in a consistent way) */
     return num_total_items;
