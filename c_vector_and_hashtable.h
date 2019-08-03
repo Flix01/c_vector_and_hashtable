@@ -361,15 +361,21 @@ CVH_API_PRIV size_t cvh_hashtable_get_num_items(cvh_hashtable_t* ht) {
     return sum;
 }
 CVH_API_PRIV int cvh_hashtable_dbg_check(cvh_hashtable_t* ht) {
-    size_t i,j,num_total_items=0,num_sorting_errors=0,min_num_bucket_items=(size_t)-1,max_num_bucket_items=0;
+    size_t i,j,num_total_items=0,num_sorting_errors=0,min_num_bucket_items=(size_t)-1,max_num_bucket_items=0,min_cnt=0,max_cnt=0,avg_cnt=0,avg_round=0;
     double avg_num_bucket_items=0.0,std_deviation=0.0;
     const unsigned char* last_item = NULL;
     CVH_ASSERT(ht && ht->item_cmp);
     for (i=0;i<CVH_NUM_HTUINT;i++) {
         const cvh_hashtable_vector_t* bck = &ht->buckets[i];
         num_total_items+=bck->num_items;
-        if (min_num_bucket_items>bck->num_items) min_num_bucket_items=bck->num_items;
-        if (max_num_bucket_items<bck->num_items) max_num_bucket_items=bck->num_items;
+        if (min_num_bucket_items>=bck->num_items) {
+			if (min_num_bucket_items==bck->num_items) ++min_cnt;
+			else min_num_bucket_items=bck->num_items;
+		}
+        if (max_num_bucket_items<=bck->num_items) {
+			if (max_num_bucket_items==bck->num_items) ++max_cnt;
+			else max_num_bucket_items=bck->num_items;
+		}
         if (bck->p && bck->num_items) {
             last_item = NULL;
             for (j=0;j<bck->num_items;j++)  {
@@ -388,14 +394,19 @@ CVH_API_PRIV int cvh_hashtable_dbg_check(cvh_hashtable_t* ht) {
         }
     }
     avg_num_bucket_items = (double)num_total_items/(double) CVH_NUM_HTUINT;
-    if (CVH_NUM_HTUINT<2) {std_deviation=0.;}
+    if (CVH_NUM_HTUINT<2) {std_deviation=0.;avg_cnt=min_cnt=max_cnt=1;avg_round=0;}
     else {
+        const double dec = avg_num_bucket_items-(double)((size_t)avg_num_bucket_items); // in (0,1]
+        avg_round = (size_t)avg_num_bucket_items;
+        if (dec>=0.5) avg_round+=1;
         for (i=0;i<CVH_NUM_HTUINT;i++) {
-            double tmp = ht->buckets[i].num_items-avg_num_bucket_items;
+            const cvh_hashtable_vector_t* bck = &ht->buckets[i];
+            double tmp = bck->num_items-avg_num_bucket_items;
             std_deviation+=tmp*tmp;
+            if (bck->num_items==avg_round) ++avg_cnt;
         }
         std_deviation/=(double)(CVH_NUM_HTUINT-1); /* this is the variance */
-        /* we must calculate its square root now (without depending on <math.h>. Code based on:
+        /* we must calculate its square root now without depending on <math.h>. Code based on:
            https://stackoverflow.com/questions/29018864/any-way-to-obtain-square-root-of-a-number-without-using-math-h-and-sqrt
         */
         {
@@ -414,7 +425,7 @@ CVH_API_PRIV int cvh_hashtable_dbg_check(cvh_hashtable_t* ht) {
         }
     }
 #   ifndef CVH_NO_STDIO
-    printf("[cvh_hashtable_dbg_check] num_total_items=%lu in %d buckets [items per bucket: mean=%1.3f std_deviation=%1.3f min=%lu max=%lu]\n",num_total_items,CVH_NUM_HTUINT,avg_num_bucket_items,std_deviation,min_num_bucket_items,max_num_bucket_items);
+    printf("[cvh_hashtable_dbg_check] num_total_items=%lu in %d buckets [items per bucket: mean=%1.3f std_deviation=%1.3f min=%lu (in %lu/%d) avg=%lu (in %lu/%d) max=%lu (in %lu/%d)]\n",num_total_items,CVH_NUM_HTUINT,avg_num_bucket_items,std_deviation,min_num_bucket_items,min_cnt,CVH_NUM_HTUINT,avg_round,avg_cnt,CVH_NUM_HTUINT,max_num_bucket_items,max_cnt,CVH_NUM_HTUINT);
 #   endif
     CVH_ASSERT(num_sorting_errors==0); /* When this happens, it can be a wrong user 'item_cmp' function (that cannot sort keys in a consistent way) */
     return num_total_items;
