@@ -14,6 +14,11 @@ gcc -x c++ -O2 -no-pie -fno-pie main.c -o main
 VECTOR TEST:
 mystruct_vector[0]={	100,	-20,	50};
 mystruct_vector[1]={	-10,	200,	-5};
+mystruct_vector[2]={	3,	-300,	0};
+Removed item 1.
+mystruct_vector[0]={	100,	-20,	50};
+mystruct_vector[1]={	3,	-300,	0};
+
 SORTED VECTOR TEST:
 mystruct_vector[0]={	50,	10,	80};
 mystruct_vector[1]={	100,	-50,	80};
@@ -22,6 +27,7 @@ mystruct_vector[3]={	200,	-50,	80};
 mystruct_vector[4]={	500,	10,	80};
 item={	100,	10,	80}	found at mystruct_vector[2].
 item={	100,	10,	100}	not found.
+
 HASHTABLE TEST:
 Added item myht[	100,	50,	25]	["100-50-25"].
 Added item myht[	5,	43,	-250]	["5-43-250"].
@@ -33,6 +39,7 @@ All items (generally unsorted):
 2) myht[	100,	50,	25]	["100-50-25"].
 Removed item [	10,	250,	125]
 An item with key[	10,	250,	125] is NOT present.
+
 
 -> Extra stuff: mingw and (an old) cl compiler command-lines
 x86_64-w64-mingw32-gcc -mconsole -O2 main.c -o main_mingw.exe
@@ -108,8 +115,8 @@ struct mystruct * mystruct_p =NULL;	/* just a ptr we'll use later...*/
 
 printf("VECTOR TEST:\n");
 
-/* add capacity for two (more) items */
-cvh_vector_reserve((void**)&mystruct_vector,mystruct_vector_size+2,&mystruct_vector_capacity_in_items,mystructsizeinbytes);
+/* add capacity for three (more) items */
+cvh_vector_reserve((void**)&mystruct_vector,mystruct_vector_size+3,&mystruct_vector_capacity_in_items,mystructsizeinbytes);
 
 /* fill the first new item (and increment 'mystruct_vector_size'): */              
 mystruct_p = &mystruct_vector[mystruct_vector_size++];
@@ -119,7 +126,22 @@ mystruct_p->a=100;mystruct_p->b=-20;mystruct_p->c=50;
 mystruct_p = &mystruct_vector[mystruct_vector_size++];
 mystruct_p->a=-10;mystruct_p->b=200;mystruct_p->c=-5;
 
-/* display all elements */
+/* fill the third new item (and increment 'mystruct_vector_size'): */
+mystruct_p = &mystruct_vector[mystruct_vector_size++];
+mystruct_p->a=3;mystruct_p->b=-300;mystruct_p->c=0;
+
+/* display all items */
+for (i=0;i<mystruct_vector_size;i++) printf("mystruct_vector[%lu]={\t%d,\t%d,\t%d};\n",i,mystruct_vector[i].a,mystruct_vector[i].b,mystruct_vector[i].c);
+
+/* remove element 1 */
+if (cvh_vector_remove_at((void*)mystruct_vector,mystructsizeinbytes,mystruct_vector_size,1))	{
+	--mystruct_vector_size;	/* MANDATORY: 'mystruct_vector_size' is handled by the user */
+	printf("Removed item 1.\n");
+}
+
+/* note that if you want to clear 'mystruct_vector', you can just set 'mystruct_vector_size' to zero */
+
+/* display all items */
 for (i=0;i<mystruct_vector_size;i++) printf("mystruct_vector[%lu]={\t%d,\t%d,\t%d};\n",i,mystruct_vector[i].a,mystruct_vector[i].b,mystruct_vector[i].c);
 
 /* delete vector */
@@ -134,21 +156,21 @@ struct mystruct mystruct_item = {200,-50,80};
 struct mystruct* mystruct_p = NULL;	/* just a ptr we'll use later... */
 size_t position = 0;int match=0;
 
-printf("SORTED VECTOR TEST:\n");
+printf("\nSORTED VECTOR TEST:\n");
 
 /* add capacity for 5 (more) items */
 cvh_vector_reserve((void**)&mystruct_vector,mystruct_vector_size+5,&mystruct_vector_capacity_in_items,mystructsizeinbytes);
 
 /* IMPORTANT: before calling 'cvh_vector_insert_sorted', 'mystruct_vector' my have space for at least one MORE item to insert. */
-/* we add 5 'a-sorted' items (please note that we increment 'mystruct_vector_size' each call): */
+/* we add 5 items to the sorted vector (please note that we increment 'mystruct_vector_size' each call): */
 mystruct_item.a=200;cvh_vector_insert_sorted(mystruct_vector,mystructsizeinbytes,mystruct_vector_size++,&mystruct_item,&mystruct_cmp,NULL,1);
 mystruct_item.a=100;cvh_vector_insert_sorted(mystruct_vector,mystructsizeinbytes,mystruct_vector_size++,&mystruct_item,&mystruct_cmp,NULL,1);
 mystruct_item.b=10;cvh_vector_insert_sorted(mystruct_vector,mystructsizeinbytes,mystruct_vector_size++,&mystruct_item,&mystruct_cmp,NULL,1);
 mystruct_item.a=50;cvh_vector_insert_sorted(mystruct_vector,mystructsizeinbytes,mystruct_vector_size++,&mystruct_item,&mystruct_cmp,NULL,1);
 mystruct_item.a=500;cvh_vector_insert_sorted(mystruct_vector,mystructsizeinbytes,mystruct_vector_size++,&mystruct_item,&mystruct_cmp,NULL,1);
 /* last 2 arguments are (int* match=NULL,int insert_even_if_item_match=1): we set the latter to 1 (true), so that it's safe to always (post) increment 'mystruct_vector_size' on each call. */
-/* otherwise we should pass a pointer to an int, and increment 'mystruct_vector_size' only if it's 1 */
-/* Also it can be useful to know that 'cvh_vector_insert_sorted' returns a size_t insertion position. */
+/* otherwise we should pass a pointer to an int, '&match', and increment 'mystruct_vector_size' only if it's 1 */
+/* Also it can be useful to know that 'cvh_vector_insert_sorted' returns a size_t insertion 'position'. */
 
 /* display all elements */
 for (i=0;i<mystruct_vector_size;i++) printf("mystruct_vector[%lu]={\t%d,\t%d,\t%d};\n",i,mystruct_vector[i].a,mystruct_vector[i].b,mystruct_vector[i].c);
@@ -166,6 +188,10 @@ printf("item={\t%d,\t%d,\t%d}\t",mystruct_item.a,mystruct_item.b,mystruct_item.c
 if (match) printf("found at mystruct_vector[%lu].\n",position);
 else printf("not found.\n");
 
+/* note that to remove an item, once we have 'position' 
+[returned by 'cvh_vector_insert_sorted(...)' or by 'cvh_vector_binary_search(...)'] 
+we can use 'cvh_vector_remove_at(...)' like above */
+
 /* delete vector */
 cvh_free(mystruct_vector);mystruct_vector=NULL;mystruct_vector_size=mystruct_vector_capacity_in_items=0;
 
@@ -179,7 +205,7 @@ cvh_free(mystruct_vector);mystruct_vector=NULL;mystruct_vector_size=mystruct_vec
 	struct myhtitem_key_value item_to_search,*fetched_item;
 	int match=0;
 
-	printf("HASHTABLE TEST:\n");
+	printf("\nHASHTABLE TEST:\n");
 
 	/* create hashtable  'myht' (must be freed with 'cvh_hashtable_free(...)') */
 	myht = cvh_hashtable_create(myhtitem_key_value_sizeinbytes,&myhtitem_key_hash,&myhtitem_key_cmp,0);	/* last arg is 'initial_bucket_capacity_in_items' */
@@ -225,7 +251,12 @@ cvh_free(mystruct_vector);mystruct_vector=NULL;mystruct_vector_size=mystruct_vec
 	}
 	else printf("Fetched item myht[\t%d,\t%d,\t%d]\t[\"%s\"].\n",fetched_item->a,fetched_item->b,fetched_item->c,fetched_item->value);
 
-	/* Display all entries (in general they are not sorted, but in this case they should) */
+	/* IMPORTANT: of course we CAN'T change the 'key' part of any of the fetched items (items returned by 'cvh_hashtable_get(...)' or 'cvh_hashtable_get_or_insert(...)') 
+       and pretend that the hashtable does not break! (The 'key' part defines the position of the item inside the hashtable).
+       But we can change any other member (including 'value' if we want).
+	*/
+
+	/* Display all entries (in general they are not sorted) */
 	k=0;printf("All items (generally unsorted):\n");	
 	for (i=0;i<CVH_NUM_HTUINT;i++)	{
 		const cvh_hashtable_vector_t* bucket = &myht->buckets[i];
@@ -238,7 +269,7 @@ cvh_free(mystruct_vector);mystruct_vector=NULL;mystruct_vector_size=mystruct_vec
 
 	/* Remove 'item_to_search' */
 	if (cvh_hashtable_remove(myht,&item_to_search)) printf("Removed item [\t%d,\t%d,\t%d]\n",item_to_search.a,item_to_search.b,item_to_search.c);
-	else printf("Can't removed item [\t%d,\t%d,\t%d], because it's not present.\n",item_to_search.a,item_to_search.b,item_to_search.c);
+	else printf("Can't remove item [\t%d,\t%d,\t%d], because it's not present.\n",item_to_search.a,item_to_search.b,item_to_search.c);
 
     /* Just fetch 'item_to_search', without inserting it if not found (this call can return NULL) */
     fetched_item = (struct myhtitem_key_value*) cvh_hashtable_get(myht,&item_to_search); /* return-value casting is required for C++ compilation only */

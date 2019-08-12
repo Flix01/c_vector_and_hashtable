@@ -189,18 +189,20 @@ CVH_API_PRIV CVH_API_INL size_t cvh_vector_insert_sorted(void* v,size_t item_siz
     cvh_vector_insert_at(v,item_size_in_bytes,num_items,item_to_insert,position);
     return position;
 }
-CVH_API_PRIV CVH_API_INL void cvh_vector_remove_at(void* v,size_t item_size_in_bytes,size_t num_items,size_t position)  {
+CVH_API_PRIV CVH_API_INL int cvh_vector_remove_at(void* v,size_t item_size_in_bytes,size_t num_items,size_t position)  {
     /* position is in [0,num_items) */
     unsigned char* vec = (unsigned char*) v;
-    CVH_ASSERT(position<num_items);
+	const int removal_ok = (position<num_items) ? 1 : 0;
+    CVH_ASSERT(removal_ok);	/* error: position>=num_items */
     memmove(&vec[position*item_size_in_bytes],&vec[(position+1)*item_size_in_bytes],(num_items-position-1)*item_size_in_bytes);
+	return removal_ok;
 }
 
 
 /* hashtable helpers */
 /* CVH_NUM_HTUINT:
 -> defines the number of buckets in cvh_hashtable_t.
--> values returned by the user 'item_hash' function should be in the range [0,CVH_NUM_HTUINT).
+-> values returned by the user 'itemKey_hash' function should be in the range [0,CVH_NUM_HTUINT).
        usually a mod operation (like: return somevalue%CVH_NUM_HTUINT;) is enough, but
        it can be avoided when CVH_NUM_HTUINT is 256 (the default) or 65536 (its max value).
 */
@@ -225,8 +227,8 @@ CVH_API_PRIV CVH_API_INL void cvh_vector_remove_at(void* v,size_t item_size_in_b
 
 struct cvh_hashtable_t {
     size_t item_size_in_bytes;
-    cvh_htuint (*item_hash)(const void* item);
-    int (*item_cmp) (const void* item0,const void* item1);
+    cvh_htuint (*itemKey_hash)(const void* item);
+    int (*itemKey_cmp) (const void* item0,const void* item1);
     size_t initial_bucket_capacity_in_items;
     struct cvh_hashtable_vector_t   {
         void* p;
@@ -244,13 +246,13 @@ typedef struct cvh_hashtable_t cvh_hashtable_t;
 typedef struct cvh_hashtable_vector_t cvh_hashtable_vector_t;
 #endif
 
-CVH_API_PRIV cvh_hashtable_t* cvh_hashtable_create(size_t item_size_in_bytes,cvh_htuint (*item_hash)(const void* item),int (*item_cmp) (const void* item0,const void* item1),size_t initial_bucket_capacity_in_items)   {
+CVH_API_PRIV cvh_hashtable_t* cvh_hashtable_create(size_t item_size_in_bytes,cvh_htuint (*itemKey_hash)(const void* item),int (*itemKey_cmp) (const void* item0,const void* item1),size_t initial_bucket_capacity_in_items)   {
     cvh_hashtable_t* ht = (cvh_hashtable_t*) cvh_malloc(sizeof(cvh_hashtable_t));
     ht->item_size_in_bytes = item_size_in_bytes;
-    ht->item_hash = item_hash;
-    ht->item_cmp = item_cmp;
+    ht->itemKey_hash = itemKey_hash;
+    ht->itemKey_cmp = itemKey_cmp;
     ht->initial_bucket_capacity_in_items = initial_bucket_capacity_in_items>1 ? initial_bucket_capacity_in_items : 1;
-    CVH_ASSERT(ht->item_size_in_bytes && ht->item_hash && ht->item_cmp);
+    CVH_ASSERT(ht->item_size_in_bytes && ht->itemKey_hash && ht->itemKey_cmp);
     memset(ht->buckets,0,CVH_NUM_HTUINT*sizeof(cvh_hashtable_vector_t));
     return ht;
 }
@@ -284,9 +286,9 @@ CVH_API_PRIV void* cvh_hashtable_get_or_insert(cvh_hashtable_t* ht,const void* p
     cvh_hashtable_vector_t* v = NULL;
     size_t position;unsigned char* vec;cvh_htuint hash;
     CVH_ASSERT(ht);
-    hash = ht->item_hash(pvalue);
+    hash = ht->itemKey_hash(pvalue);
 #   if (CVH_NUM_HTUINT!=256 && CVH_NUM_HTUINT!=65536)
-    CVH_ASSERT(hash<CVH_NUM_HTUINT);    /* user 'item_hash' should return values in [0,CVH_NUM_HTUINT). Please use: return somevalue%CVH_NUM_HTUINT */
+    CVH_ASSERT(hash<CVH_NUM_HTUINT);    /* user 'itemKey_hash' should return values in [0,CVH_NUM_HTUINT). Please use: return somevalue%CVH_NUM_HTUINT */
 #   endif
     v = &ht->buckets[hash];
     if (!v->p)  {
@@ -297,10 +299,10 @@ CVH_API_PRIV void* cvh_hashtable_get_or_insert(cvh_hashtable_t* ht,const void* p
     /* slightly faster */
     if (v->num_items==0)    {position=0;*match=0;}
     else {
-        position =  v->num_items>2 ? cvh_vector_binary_search(v->p,ht->item_size_in_bytes,v->num_items,pvalue,ht->item_cmp,match) :
-                    cvh_vector_linear_search(v->p,ht->item_size_in_bytes,v->num_items,pvalue,ht->item_cmp,match);
+        position =  v->num_items>2 ? cvh_vector_binary_search(v->p,ht->item_size_in_bytes,v->num_items,pvalue,ht->itemKey_cmp,match) :
+                    cvh_vector_linear_search(v->p,ht->item_size_in_bytes,v->num_items,pvalue,ht->itemKey_cmp,match);
         /* slightly slower */
-        /* position = cvh_vector_binary_search(v->p,ht->item_size_in_bytes,v->num_items,pvalue,ht->item_cmp,match); */
+        /* position = cvh_vector_binary_search(v->p,ht->item_size_in_bytes,v->num_items,pvalue,ht->itemKey_cmp,match); */
     }
 
     if (*match) {
@@ -314,7 +316,7 @@ CVH_API_PRIV void* cvh_hashtable_get_or_insert(cvh_hashtable_t* ht,const void* p
     cvh_vector_insert_at(v->p,ht->item_size_in_bytes,v->num_items,pvalue,position);
     ++v->num_items;
     /* slower */
-    /*position = cvh_vector_insert_sorted(v->p,ht->item_size_in_bytes,v->num_items,pvalue,ht->item_cmp,match,0);
+    /*position = cvh_vector_insert_sorted(v->p,ht->item_size_in_bytes,v->num_items,pvalue,ht->itemKey_cmp,match,0);
     if (!(*match)) ++v->num_items;*/
     vec = (unsigned char*) v->p;
     return &vec[position*ht->item_size_in_bytes];
@@ -323,16 +325,16 @@ CVH_API_PRIV void* cvh_hashtable_get(cvh_hashtable_t* ht,const void* pvalue) {
     cvh_hashtable_vector_t* v = NULL;
     size_t position;unsigned char* vec;cvh_htuint hash;int match=0;
     CVH_ASSERT(ht);
-    hash = ht->item_hash(pvalue);
+    hash = ht->itemKey_hash(pvalue);
 #   if (CVH_NUM_HTUINT!=256 && CVH_NUM_HTUINT!=65536)
-    CVH_ASSERT(hash<CVH_NUM_HTUINT);    /* user 'item_hash' should return values in [0,CVH_NUM_HTUINT). Please use: return somevalue%CVH_NUM_HTUINT */
+    CVH_ASSERT(hash<CVH_NUM_HTUINT);    /* user 'itemKey_hash' should return values in [0,CVH_NUM_HTUINT). Please use: return somevalue%CVH_NUM_HTUINT */
 #   endif
     v = &ht->buckets[hash];
     if (!v->p || v->num_items==0)  return NULL;
 
-    position =  v->num_items>2 ? cvh_vector_binary_search(v->p,ht->item_size_in_bytes,v->num_items,pvalue,ht->item_cmp,&match) :
-                cvh_vector_linear_search(v->p,ht->item_size_in_bytes,v->num_items,pvalue,ht->item_cmp,&match);
-    /* position =  cvh_vector_binary_search(v->p,ht->item_size_in_bytes,v->num_items,pvalue,ht->item_cmp,&match); */
+    position =  v->num_items>2 ? cvh_vector_binary_search(v->p,ht->item_size_in_bytes,v->num_items,pvalue,ht->itemKey_cmp,&match) :
+                cvh_vector_linear_search(v->p,ht->item_size_in_bytes,v->num_items,pvalue,ht->itemKey_cmp,&match);
+    /* position =  cvh_vector_binary_search(v->p,ht->item_size_in_bytes,v->num_items,pvalue,ht->itemKey_cmp,&match); */
 
     if (match) {
         vec = (unsigned char*) v->p;
@@ -345,9 +347,9 @@ CVH_API_PRIV int cvh_hashtable_remove(cvh_hashtable_t* ht,const void* pvalue) {
     cvh_hashtable_vector_t* v = NULL;
     size_t position;int match = 0;
     CVH_ASSERT(ht);
-    v = (cvh_hashtable_vector_t*) &ht->buckets[ht->item_hash(pvalue)];
+    v = (cvh_hashtable_vector_t*) &ht->buckets[ht->itemKey_hash(pvalue)];
     if (!v->p)  return 0;
-    position = cvh_vector_binary_search(v->p,ht->item_size_in_bytes,v->num_items,pvalue,ht->item_cmp,&match);
+    position = cvh_vector_binary_search(v->p,ht->item_size_in_bytes,v->num_items,pvalue,ht->itemKey_cmp,&match);
     if (match) {
         cvh_vector_remove_at(v->p,ht->item_size_in_bytes,v->num_items,position);
         --v->num_items;
@@ -364,7 +366,7 @@ CVH_API_PRIV int cvh_hashtable_dbg_check(cvh_hashtable_t* ht) {
     size_t i,j,num_total_items=0,num_sorting_errors=0,min_num_bucket_items=(size_t)-1,max_num_bucket_items=0,min_cnt=0,max_cnt=0,avg_cnt=0,avg_round=0;
     double avg_num_bucket_items=0.0,std_deviation=0.0;
     const unsigned char* last_item = NULL;
-    CVH_ASSERT(ht && ht->item_cmp);
+    CVH_ASSERT(ht && ht->itemKey_cmp);
     for (i=0;i<CVH_NUM_HTUINT;i++) {
         const cvh_hashtable_vector_t* bck = &ht->buckets[i];
         num_total_items+=bck->num_items;
@@ -381,11 +383,11 @@ CVH_API_PRIV int cvh_hashtable_dbg_check(cvh_hashtable_t* ht) {
             for (j=0;j<bck->num_items;j++)  {
                 const unsigned char* item = (const unsigned char*)bck->p+j*ht->item_size_in_bytes;
                 if (last_item) {
-                    if ((*ht->item_cmp)(last_item,item)>=0) {
-                        /* When this happens, it can be a wrong user 'item_cmp' function (that cannot sort keys in a consistent way) */
+                    if ((*ht->itemKey_cmp)(last_item,item)>=0) {
+                        /* When this happens, it can be a wrong user 'itemKey_cmp' function (that cannot sort keys in a consistent way) */
                         ++num_sorting_errors;
 #                       ifndef CVH_NO_STDIO
-                        printf("[cvh_hashtable_dbg_check] Error: in bucket[%lu]: item_cmp(%lu,%lu)<=0 [num_items=%lu (in bucket)]\n",i,j-1,j,bck->num_items);
+                        printf("[cvh_hashtable_dbg_check] Error: in bucket[%lu]: itemKey_cmp(%lu,%lu)<=0 [num_items=%lu (in bucket)]\n",i,j-1,j,bck->num_items);
 #                       endif
                     }
                 }
@@ -427,7 +429,7 @@ CVH_API_PRIV int cvh_hashtable_dbg_check(cvh_hashtable_t* ht) {
 #   ifndef CVH_NO_STDIO
     printf("[cvh_hashtable_dbg_check] num_total_items=%lu in %d buckets [items per bucket: mean=%1.3f std_deviation=%1.3f min=%lu (in %lu/%d) avg=%lu (in %lu/%d) max=%lu (in %lu/%d)]\n",num_total_items,CVH_NUM_HTUINT,avg_num_bucket_items,std_deviation,min_num_bucket_items,min_cnt,CVH_NUM_HTUINT,avg_round,avg_cnt,CVH_NUM_HTUINT,max_num_bucket_items,max_cnt,CVH_NUM_HTUINT);
 #   endif
-    CVH_ASSERT(num_sorting_errors==0); /* When this happens, it can be a wrong user 'item_cmp' function (that cannot sort keys in a consistent way) */
+    CVH_ASSERT(num_sorting_errors==0); /* When this happens, it can be a wrong user 'itemKey_cmp' function (that cannot sort keys in a consistent way) */
     return num_total_items;
 }
 #ifdef __cplusplus
