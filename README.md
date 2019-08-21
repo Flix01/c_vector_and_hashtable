@@ -10,7 +10,7 @@ Its test program is here [c_hashtable_main.c](https://github.com/Flix01/c_vector
 
 
 ## [c_vector_and_hashtable.h](https://github.com/Flix01/c_vector_and_hashtable/blob/master/deprecated/c_vector_and_hashtable.h)
-A simpler, type-unsafe implementation of vector and hashtable in plain C. 
+A deprecated, simpler, type-unsafe implementation of vector and hashtable in plain C. 
 Its test program is here [main.c](https://github.com/Flix01/c_vector_and_hashtable/blob/master/deprecated/main.c).
 
 ### How to compile
