@@ -1,3 +1,4 @@
+/* https://github.com/Flix01/c_vector_and_hashtable */
 /*==================================================================================*/
 /* Plain C implementation of vector and hashtable */
 /*==================================================================================*/
@@ -370,14 +371,8 @@ CVH_API_PRIV int cvh_hashtable_dbg_check(cvh_hashtable_t* ht) {
     for (i=0;i<CVH_NUM_HTUINT;i++) {
         const cvh_hashtable_vector_t* bck = &ht->buckets[i];
         num_total_items+=bck->num_items;
-        if (min_num_bucket_items>=bck->num_items) {
-			if (min_num_bucket_items==bck->num_items) ++min_cnt;
-			else min_num_bucket_items=bck->num_items;
-		}
-        if (max_num_bucket_items<=bck->num_items) {
-			if (max_num_bucket_items==bck->num_items) ++max_cnt;
-			else max_num_bucket_items=bck->num_items;
-		}
+        if (min_num_bucket_items>bck->num_items) min_num_bucket_items=bck->num_items;
+        if (max_num_bucket_items<bck->num_items) max_num_bucket_items=bck->num_items;
         if (bck->p && bck->num_items) {
             last_item = NULL;
             for (j=0;j<bck->num_items;j++)  {
@@ -396,7 +391,7 @@ CVH_API_PRIV int cvh_hashtable_dbg_check(cvh_hashtable_t* ht) {
         }
     }
     avg_num_bucket_items = (double)num_total_items/(double) CVH_NUM_HTUINT;
-    if (CVH_NUM_HTUINT<2) {std_deviation=0.;avg_cnt=min_cnt=max_cnt=1;avg_round=0;}
+    if (CVH_NUM_HTUINT<2) {std_deviation=0.;avg_cnt=min_cnt=max_cnt=1;avg_round=(min_num_bucket_items+max_num_bucket_items)/2;}
     else {
         const double dec = avg_num_bucket_items-(double)((size_t)avg_num_bucket_items); // in (0,1]
         avg_round = (size_t)avg_num_bucket_items;
@@ -405,6 +400,8 @@ CVH_API_PRIV int cvh_hashtable_dbg_check(cvh_hashtable_t* ht) {
             const cvh_hashtable_vector_t* bck = &ht->buckets[i];
             double tmp = bck->num_items-avg_num_bucket_items;
             std_deviation+=tmp*tmp;
+            if (bck->num_items==min_num_bucket_items) ++min_cnt;
+            if (bck->num_items==max_num_bucket_items) ++max_cnt;
             if (bck->num_items==avg_round) ++avg_cnt;
         }
         std_deviation/=(double)(CVH_NUM_HTUINT-1); /* this is the variance */

@@ -58,4 +58,11 @@ dkms.conf
 reps/
 main
 *.exe
+*.stash
+Makefile
+c_vector_main
+c_hashtable_main
+deprecated/main
+*.pro
+*.user
 
