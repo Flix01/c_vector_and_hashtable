@@ -56,15 +56,17 @@ freely, subject to the following restrictions:
 #endif
 
 #ifndef CH_VERSION
-#define CH_VERSION               "1.01"
-#define CH_VERSION_NUM           0101
+#define CH_VERSION               "1.02"
+#define CH_VERSION_NUM           0102
 #endif
 
 /* TODO:
-     -> add memory usage info in 'ch_xxx_dbg_check'
+     -> add a method to trim unused memory
      -> reconsider and reimplement 'clearing memory' before item ctrs
 */
 /* HISTORY:
+   CH_VERSION_NUM 0102:
+   -> added used memory info to 'ch_xxx_dbg_check'.
    CH_VERSION_NUM 0101:
    -> allowed unsorted buckets (when key_cmp==NULL). Not very robust: they should never be used.
    -> added 'fake member function calls' syntax like:
@@ -270,6 +272,24 @@ CH_API void* ch_safe_realloc(void** const ptr, size_t new_size)  {
     }
     return ptr2;
 }
+CH_API void ch_convert_bytes(size_t bytes_in,size_t pTGMKB[5])   {
+    size_t i;pTGMKB[4] = bytes_in;
+    for (i=0;i<4;i++)  {pTGMKB[3-i]=pTGMKB[4-i]/1024;pTGMKB[4-i]%=1024;}
+}
+#   ifndef CH_NO_STDIO
+CH_API void ch_display_bytes(size_t bytes_in)   {
+    size_t pTGMKB[5],i,cnt=0;
+    const char* names[5] = {"TB","GB","MB","KB","Bytes"};
+    ch_convert_bytes(bytes_in,pTGMKB);
+    for (i=0;i<5;i++)   {
+        if (pTGMKB[i]!=0) {
+            if (cnt>0) printf(" ");
+            printf("%lu %s",pTGMKB[i],names[i]);
+            ++cnt;
+        }
+    }
+}
+#   endif
 #endif /* CH_PRIV_FUNCTIONS */
 
 
@@ -573,6 +593,8 @@ CH_API size_t CH_HASHTABLE_TYPE_FCT(_get_num_items)(const CH_HASHTABLE_TYPE* ht)
 CH_API int CH_HASHTABLE_TYPE_FCT(_dbg_check)(const CH_HASHTABLE_TYPE* ht) {
     size_t i,j,num_total_items=0,num_sorting_errors=0,min_num_bucket_items=(size_t)-1,max_num_bucket_items=0,min_cnt=0,max_cnt=0,avg_cnt=0,avg_round=0;
     double avg_num_bucket_items=0.0,std_deviation=0.0;
+    size_t mem_minimal=sizeof(CH_HASHTABLE_TYPE),mem_used=sizeof(CH_HASHTABLE_TYPE);
+    double mem_used_percentage = 100;
     const CH_HASHTABLE_ITEM_TYPE* last_item = NULL;
     CH_ASSERT(ht);
     for (i=0;i<CH_NUM_BUCKETS;i++) {
@@ -580,24 +602,29 @@ CH_API int CH_HASHTABLE_TYPE_FCT(_dbg_check)(const CH_HASHTABLE_TYPE* ht) {
         num_total_items+=bck->size;
         if (min_num_bucket_items>bck->size) min_num_bucket_items=bck->size;
         if (max_num_bucket_items<bck->size) max_num_bucket_items=bck->size;
-        if (ht->key_cmp && bck->v && bck->size) {
-            last_item = NULL;
-            for (j=0;j<bck->size;j++)  {
-                const CH_HASHTABLE_ITEM_TYPE* item = &bck->v[j];
-                if (last_item) {
-                    if (ht->key_cmp(&last_item->k,&item->k)>=0) {
-                        /* When this happens, it can be a wrong user 'key_cmp' function (that cannot sort keys in a consistent way) */
-                        ++num_sorting_errors;
+        if (bck->v) {
+            mem_minimal += sizeof(CH_HASHTABLE_ITEM_TYPE)*bck->size;
+            mem_used += sizeof(CH_HASHTABLE_ITEM_TYPE)*bck->capacity;
+            if (ht->key_cmp && bck->size)    {
+                last_item = NULL;
+                for (j=0;j<bck->size;j++)  {
+                    const CH_HASHTABLE_ITEM_TYPE* item = &bck->v[j];
+                    if (last_item) {
+                        if (ht->key_cmp(&last_item->k,&item->k)>=0) {
+                            /* When this happens, it can be a wrong user 'key_cmp' function (that cannot sort keys in a consistent way) */
+                            ++num_sorting_errors;
 #                       ifndef CH_NO_STDIO
-                        printf("[%s] Error: in bucket[%lu]: key_cmp(%lu,%lu)<=0 [num_items=%lu (in bucket)]\n",CH_XSTR(CH_HASHTABLE_TYPE_FCT(_dbg_check)),i,j-1,j,bck->size);
+                            printf("[%s] Error: in bucket[%lu]: key_cmp(%lu,%lu)<=0 [num_items=%lu (in bucket)]\n",CH_XSTR(CH_HASHTABLE_TYPE_FCT(_dbg_check)),i,j-1,j,bck->size);
 #                       endif
+                        }
                     }
+                    last_item=item;
                 }
-                last_item=item;
             }
         }
     }
     avg_num_bucket_items = (double)num_total_items/(double) CH_NUM_BUCKETS;
+    mem_used_percentage = (double)mem_used*100.0/(double)mem_minimal;
     if (CH_NUM_BUCKETS<2) {std_deviation=0.;avg_cnt=min_cnt=max_cnt=1;avg_round=(min_num_bucket_items+max_num_bucket_items)/2;}
     else {
         const double dec = avg_num_bucket_items-(double)((size_t)avg_num_bucket_items); /* in (0,1] */
@@ -630,8 +657,12 @@ CH_API int CH_HASHTABLE_TYPE_FCT(_dbg_check)(const CH_HASHTABLE_TYPE* ht) {
 #       undef SQRT_MINDIFF
         }
     }
-#   ifndef CH_NO_STDIO
-    printf("[%s] num_total_items=%lu in %d buckets [items per bucket: mean=%1.3f std_deviation=%1.3f min=%lu (in %lu/%d) avg=%lu (in %lu/%d) max=%lu (in %lu/%d)]\n",CH_XSTR(CH_HASHTABLE_TYPE_FCT(_dbg_check)),num_total_items,CH_NUM_BUCKETS,avg_num_bucket_items,std_deviation,min_num_bucket_items,min_cnt,CH_NUM_BUCKETS,avg_round,avg_cnt,CH_NUM_BUCKETS,max_num_bucket_items,max_cnt,CH_NUM_BUCKETS);
+#   ifndef CH_NO_STDIO    
+    printf("[%s]:\n",CH_XSTR(CH_HASHTABLE_TYPE_FCT(_dbg_check)));
+    printf("\tnum_total_items=%lu in %d buckets [items per bucket: mean=%1.3f std_deviation=%1.3f min=%lu (in %lu/%d) avg=%lu (in %lu/%d) max=%lu (in %lu/%d)].\n",num_total_items,CH_NUM_BUCKETS,avg_num_bucket_items,std_deviation,min_num_bucket_items,min_cnt,CH_NUM_BUCKETS,avg_round,avg_cnt,CH_NUM_BUCKETS,max_num_bucket_items,max_cnt,CH_NUM_BUCKETS);
+    printf("\tmemory_used: ");ch_display_bytes(mem_used);
+    printf(". memory_minimal_possible: ");ch_display_bytes(mem_minimal);
+    printf(". mem_used_percentage: %1.2f%% (100%% is the best possible result).\n",mem_used_percentage);
 #   endif
     CH_ASSERT(num_sorting_errors==0); /* When this happens, it can be a wrong user 'itemKey_cmp' function (that cannot sort keys in a consistent way) */
     return num_total_items;

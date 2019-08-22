@@ -100,17 +100,20 @@ together with a lot of type-safe functions starting with 'cv_mystruct_'
 */
 
 static void SimpleTest(void)   {
-    /* Note that initialization here is MANDATORY (or you can use 'cv_mystruct_create(...)') */
-    cv_mystruct v =
-#   ifndef __cplusplus
-    {0}; /* stackoverflow says: {0} is good for c, {} for c++ */
-#   else
-    {};
-#   endif
+    cv_mystruct v;                  /* a.k.a. std::vector<mystruct> */
     mystruct tmp = {-10,200,-5};	/* tmp item used later */
     size_t i,position;int match;
 
     printf("VECTOR TEST:\n");
+
+    /* Note that we could just have initialized 'v' this way: 'cv_mystruct v={0};' but
+       by using 'cv_mystruct_create(...)' we enable the 'fake member function call syntax' */
+    cv_mystruct_create(&v);
+    /* With the 'fake member function call syntax', we can make fake member calls like:
+       v.reserve(&v,4); // note that 'v' appears twice
+       However in this demo we don't use this syntax (that can be removed by defining
+       CV_DISABLE_FAKE_MEMBER_FUNCTIONS globally (= in the Project Options)
+    */
 
     /* optional */
     cv_mystruct_reserve(&v,4);
@@ -143,9 +146,9 @@ static void SimpleTest(void)   {
 
     printf("\nSORTED VECTOR TEST:\n");
 
-    /* 'cv_mystruct_create(...)' can be called only to replace the initializer list, or after 'cv_mystruct_free(...)' */
+    /* 'cv_mystruct_create_with(...)' can be called only to replace the initializer list, or after 'cv_mystruct_free(...)' */
     /* we need it just because we must change 'v.item_cmp', which is const to prevent users from changing it on the fly and break sorting */
-    cv_mystruct_create(&v,NULL,NULL,NULL,&mystruct_cmp);    /* we can set 'mystruct_cmp' in its initialization list, or in 'cv_mystruct_create(...)' too */
+    cv_mystruct_create_with(&v,&mystruct_cmp,NULL,NULL,NULL);    /* we can set 'mystruct_cmp' in its initialization list, or in 'cv_mystruct_create(...)' too */
 
     /* we add 5 items in a sorted way */
     tmp.a=200;cv_mystruct_insert_sorted(&v,&tmp,NULL,1);
@@ -205,12 +208,13 @@ static void string_cpy(string* a,const string* b)    {
 #endif /* C_VECTOR_string_H */
 
 static void StringVectorTest(void) {
-    /* c init (= curly brackets) is equivalent to cv_string_create(...) */
-    /* in our case we can simply replace '&string_ctr' with 'NULL', because new allocated memory is always cleared (to increase code robustness) */
-    cv_string s = {0,0,0,&string_ctr,&string_dtr,string_cpy,string_cmp};
+    cv_string s;    /* a.k.a. std::vector<string> */
     size_t i,position;int match=0;
 
     printf("\nSORTED STRINGVECTOR TEST:\n");
+
+    /* in our case we can simply replace '&string_ctr' with 'NULL', because new allocated memory is always cleared (to increase code robustness) */
+    cv_string_create_with(&s,&string_cmp,&string_ctr,&string_dtr,&string_cpy);
 
     /* we add 5 items in a sorted way */
     /* note that, by using the '_by_val' overloads, we can pass text strings directly.
@@ -275,7 +279,7 @@ typedef struct {
    we need to specify ctr/dtr/cpy helpers: */
 static void big_t_ctr(big_t* a)    {
     a->a=0;
-    cv_mystruct_create(&a->v,NULL,NULL,NULL,NULL);  /* this can be thought as the 'cv_mystruct' ctr */
+    cv_mystruct_create(&a->v);  /* this can be thought as the 'cv_mystruct' ctr */
 }
 static void big_t_dtr(big_t* a)    {
     cv_mystruct_free(&a->v);    /* this can be thought as the 'cv_mystruct' dtr */
@@ -292,7 +296,7 @@ static void big_t_cpy(big_t* a,const big_t* b)    {
 #endif /* C_VECTOR_big_t_H */
 
 static void ComplexTest(void) {
-    cv_big_t v = {0,0,0,&big_t_ctr,&big_t_dtr,&big_t_cpy,NULL}; /* our vector */
+    cv_big_t v; /* a.k.a. std::vector<big_t> */
     big_t tmp = /* a tmp item */
     #   ifndef __cplusplus
         {0}; /* even if in plain C initialization is not necessary in this case */
@@ -303,6 +307,8 @@ static void ComplexTest(void) {
     size_t i,j;
 
     printf("\nCOMPLEX VECTOR TEST:\n");
+
+    cv_big_t_create_with(&v,NULL,&big_t_ctr,&big_t_dtr,&big_t_cpy);
 
     big_t_ctr(&tmp);
     /* element 0 */
