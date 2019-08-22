@@ -25,7 +25,7 @@ freely, subject to the following restrictions:
 /* USAGE: Please see the bundled "c_hashtable_main.c". */
 
 /* SCOPED DEFINITION: The following definitions must be set before each <c_hashtable.h>
-   inclusion, and gets reset soon after:
+   inclusion, and get reset soon after:
 
    CH_KEY_TYPE              (mandatory)
    CH_VALUE_TYPE            (mandatory)
@@ -66,7 +66,7 @@ freely, subject to the following restrictions:
 */
 /* HISTORY:
    CH_VERSION_NUM 0101:
-   -> added unsorted buckets (when key_cmp==NULL). Not very robust: they should never be used.
+   -> allowed unsorted buckets (when key_cmp==NULL). Not very robust: they should never be used.
    -> added 'fake member function calls' syntax like:
         ht_mykey_myvalue ht;	// no C init here for fake member functions
         ht_mykey_myvalue_create(&ht,...);	// this inits fake members functions too now
