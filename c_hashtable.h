@@ -24,6 +24,29 @@ freely, subject to the following restrictions:
 */
 /* USAGE: Please see the bundled "c_hashtable_main.c". */
 
+/* SCOPED DEFINITION: The following definitions must be set before each <c_hashtable.h>
+   inclusion, and gets reset soon after:
+
+   CH_KEY_TYPE              (mandatory)
+   CH_VALUE_TYPE            (mandatory)
+   CH_NUM_BUCKETS           (mandatory: and must be copied to some 'type-safe definition')
+   CH_USE_VOID_PTRS_IN_CMP_FCT  (optional: if you want to share cmp_fcts with c style functions like qsort)
+   CHV_KEY_SUPPORT_EQUALITY_CMP_IN_UNSORTED_SEARCH (optional, but affects only unsorted buckets, which we should never use)
+
+   GLOBAL DEFINITIONS: The following definitions (when used) must be set
+   globally (= in the Project Options or in a StdAfx.h file):
+
+   CH_MAX_NUM_BUCKETS                       256 or 65536
+   CH_DISABLE_FAKE_MEMBER_FUNCTIONS
+   CH_MALLOC
+   CH_REALLOC
+   CH_FREE
+   CH_ASSERT
+   CH_NO_ASSERT
+   CH_NO_STDIO
+   CH_NO_STDLIB
+   CH_API
+*/
 
 #ifndef CH_KEY_TYPE
 #error Please define CH_KEY_TYPE
@@ -33,21 +56,27 @@ freely, subject to the following restrictions:
 #endif
 
 #ifndef CH_VERSION
-#define CH_VERSION               "1.00"
-#define CH_VERSION_NUM           0100
+#define CH_VERSION               "1.01"
+#define CH_VERSION_NUM           0101
 #endif
 
 /* TODO:
-	-> allow unsorted buckets
-	-> add a global definition to allow 'fake member calls' (if it's possible).
-		syntax like:
-		ht_mykey_myvalue ht;	// no init here for fake member calls
-		ht_mykey_myvalue_create(&ht,...);	// this must init fake members calls too
+     -> add memory usage info in 'ch_xxx_dbg_check'
+     -> reconsider and reimplement 'clearing memory' before item ctrs
+*/
+/* HISTORY:
+   CH_VERSION_NUM 0101:
+   -> added unsorted buckets (when key_cmp==NULL). Not very robust: they should never be used.
+   -> added 'fake member function calls' syntax like:
+        ht_mykey_myvalue ht;	// no C init here for fake member functions
+        ht_mykey_myvalue_create(&ht,...);	// this inits fake members functions too now
 
-		ht.get_or_insert(&ht,...);	// fake member calls ('ht' appears twice)
-		ht.get(&ht,...);
+        ht.get_or_insert(&ht,...);	// fake member function calls ('ht' appears twice)
+        ht.get(&ht,...);
 
-		ht_mykey_myvalue_free(&ht);
+        ht_mykey_myvalue_free(&ht);
+      It can be disabled globally (= in the Project Options) by defining CH_DISABLE_FAKE_MEMBER_FUNCTIONS.
+      'Fake member functions' can slow down performance, because the functions can't be inlined anymore.
 */
 
 /* ------------------------------------------------- */
@@ -101,7 +130,6 @@ extern "C"	{
 #define CH_API __inline static
 #endif
 
-/* the following 4 lines can be removed */
 #ifndef CH_XSTR
 #define CH_XSTR(s) CH_STR(s)
 #define CH_STR(s) #s
@@ -168,7 +196,8 @@ typedef struct {
 	CH_KEY_TYPE k;
 	CH_VALUE_TYPE v;	
 } CH_HASHTABLE_ITEM_TYPE;
-typedef struct {
+typedef struct CH_HASHTABLE_TYPE CH_HASHTABLE_TYPE;
+struct CH_HASHTABLE_TYPE {
     /* key callbacks */
     void (*const key_ctr)(CH_KEY_TYPE*);                     /* optional (can be NULL) */
     void (*const key_dtr)(CH_KEY_TYPE*);                     /* optional (can be NULL) */
@@ -187,7 +216,24 @@ typedef struct {
 		const size_t size;
 		const size_t capacity;	
     } buckets[CH_NUM_BUCKETS];
-} CH_HASHTABLE_TYPE;
+
+#   ifndef CH_DISABLE_FAKE_MEMBER_FUNCTIONS  /* must be defined glabally (in the Project Options)) */
+    void (* const clear)(CH_HASHTABLE_TYPE* ht);
+    void (* const free)(CH_HASHTABLE_TYPE* ht);
+    CH_VALUE_TYPE* (* const get_or_insert)(CH_HASHTABLE_TYPE* ht,const CH_KEY_TYPE* key,int* match);
+    CH_VALUE_TYPE* (* const get_or_insert_by_val)(CH_HASHTABLE_TYPE* ht,const CH_KEY_TYPE key,int* match);
+    CH_VALUE_TYPE* (* const get)(CH_HASHTABLE_TYPE* ht,const CH_KEY_TYPE* key);
+    CH_VALUE_TYPE* (* const get_by_val)(CH_HASHTABLE_TYPE* ht,const CH_KEY_TYPE key);
+    const CH_VALUE_TYPE* (* const get_const)(const CH_HASHTABLE_TYPE* ht,const CH_KEY_TYPE* key);
+    const CH_VALUE_TYPE* (* const get_const_by_val)(const CH_HASHTABLE_TYPE* ht,const CH_KEY_TYPE key);
+    int (* const remove)(CH_HASHTABLE_TYPE* ht,const CH_KEY_TYPE* key);
+    int (* const remove_by_val)(CH_HASHTABLE_TYPE* ht,const CH_KEY_TYPE key);
+    size_t (* const get_num_items)(const CH_HASHTABLE_TYPE* ht);
+    void (* const dbg_check)(const CH_HASHTABLE_TYPE* ht);
+    void (* const swap)(CH_HASHTABLE_TYPE* a,CH_HASHTABLE_TYPE* b);
+    void (* const cpy)(CH_HASHTABLE_TYPE* a,const CH_HASHTABLE_TYPE* b);
+#   endif
+};
 typedef struct CH_VECTOR_TYPE CH_VECTOR_TYPE;
 #endif /* CH_HASHTABLE_TYPE */
 
@@ -271,6 +317,27 @@ CH_API void CH_VECTOR_TYPE_FCT(_resize)(CH_VECTOR_TYPE* v,size_t size,const CH_H
         else if (ht->value_ctr) {for (i=v->size;i<size;i++) ht->value_ctr(&v->v[i].v);}
     }
     *((size_t*) &v->size)=size;
+}
+CH_API size_t CH_VECTOR_TYPE_FCT(_unsorted_search)(CH_VECTOR_TYPE* v,const CH_KEY_TYPE* key,int* match,const CH_HASHTABLE_TYPE* ht)  {
+    size_t i;
+    CH_ASSERT(v && ht);
+    if (match) *match=0;
+    if (v->size==0) return 0;  /* otherwise match will be 1 */
+    if (!ht->key_cmp)   {
+        int cmp_ok=0;
+        for (i = 0; i < v->size; i++) {
+#           ifndef CHV_KEY_SUPPORT_EQUALITY_CMP_IN_UNSORTED_SEARCH  /* this is reset after header inclusion */
+            cmp_ok = (memcmp(key,&v->v[i].k,sizeof(CH_KEY_TYPE))==0)?1:0;
+#           else
+            cmp_ok = (*key==v->v[i].k)?1:0;
+#           endif
+            if (cmp_ok) {if (match) {*match=1;} return i;}}
+    }
+    else    {
+        for (i = 0; i < v->size; i++) {if (ht->key_cmp(key,&v->v[i].k)==0) {if (match) {*match=1;}return i;}}
+    }
+    CH_ASSERT(i==v->size);
+    return i;
 }
 CH_API size_t CH_VECTOR_TYPE_FCT(_linear_search)(CH_VECTOR_TYPE* v,const CH_KEY_TYPE* key,int* match,const CH_HASHTABLE_TYPE* ht)  {
     int cmp=0;size_t i;
@@ -362,33 +429,6 @@ CH_API int CH_VECTOR_TYPE_FCT(_remove_at)(CH_VECTOR_TYPE* v,size_t position,cons
 }
 /* --- PRIVATE FUNCTIONS END -------------------------------------------------- */
 
-CH_API void CH_HASHTABLE_TYPE_FCT(_create)(
-        CH_HASHTABLE_TYPE* ht,
-        ch_hash_uint (*key_hash)(const CH_KEY_TYPE*),
-        int (*key_cmp) (const CH_CMP_TYPE*,const CH_CMP_TYPE*),
-        void (*key_ctr)(CH_KEY_TYPE*),void (*key_dtr)(CH_KEY_TYPE*),void (*key_cpy)(CH_KEY_TYPE*,const CH_KEY_TYPE*),
-        void (*value_ctr)(CH_VALUE_TYPE*),void (*value_dtr)(CH_VALUE_TYPE*),void (*value_cpy)(CH_VALUE_TYPE*,const CH_VALUE_TYPE*),
-        size_t initial_bucket_capacity)   {
-    typedef ch_hash_uint (*key_hash_type)(const CH_KEY_TYPE*);
-    typedef int (*key_cmp_type)(const CH_CMP_TYPE*,const CH_CMP_TYPE*);
-    typedef void (*key_ctr_dtr_type)(CH_KEY_TYPE*);
-    typedef void (*key_cpy_type)(CH_KEY_TYPE*,const CH_KEY_TYPE*);
-    typedef void (*value_ctr_dtr_type)(CH_VALUE_TYPE*);
-    typedef void (*value_cpy_type)(CH_VALUE_TYPE*,const CH_VALUE_TYPE*);
-    CH_ASSERT(ht);
-    memset(ht,0,sizeof(CH_HASHTABLE_TYPE));
-    *((key_hash_type*)&ht->key_hash) = key_hash;
-    *((key_cmp_type*)&ht->key_cmp) = key_cmp;
-    *((key_ctr_dtr_type*)&ht->key_ctr) = key_ctr;
-    *((key_ctr_dtr_type*)&ht->key_dtr) = key_dtr;
-    *((key_cpy_type*)&ht->key_cpy) = key_cpy;
-    *((value_ctr_dtr_type*)&ht->value_ctr) = value_ctr;
-    *((value_ctr_dtr_type*)&ht->value_dtr) = value_dtr;
-    *((value_cpy_type*)&ht->value_cpy) = value_cpy;
-    *((size_t*)&ht->initial_bucket_capacity) = initial_bucket_capacity>1 ? initial_bucket_capacity : 1;
-    CH_ASSERT(ht->key_hash && ht->key_cmp);
-    /*memset(ht->buckets,0,CH_NUM_BUCKETS*sizeof(CH_VECTOR_TYPE));*/
-}
 CH_API void CH_HASHTABLE_TYPE_FCT(_free)(CH_HASHTABLE_TYPE* ht)    {
     if (ht) {
         const unsigned short max_value = (CH_NUM_BUCKETS-1);
@@ -430,12 +470,16 @@ CH_API CH_VALUE_TYPE* CH_HASHTABLE_TYPE_FCT(_get_or_insert)(CH_HASHTABLE_TYPE* h
     }
 
     if (v->size==0)    {position=0;match2=0;}
-    else {
+    else if (ht->key_cmp)   {
         /* slightly faster */
         position =  v->size>2 ? CH_VECTOR_TYPE_FCT(_binary_search)(v,key,&match2,ht) :
                     CH_VECTOR_TYPE_FCT(_linear_search)(v,key,&match2,ht);
         /* slightly slower */
         /* position = CH_VECTOR_TYPE_FCT(_binary_search)(v,key,&match2,ht); */
+    }
+    else    {
+        /* '_unsorted_search' uses memcmp(...) (when ht->key_cmp==NULL) */
+        position = CH_VECTOR_TYPE_FCT(_unsorted_search)(v,key,&match2,ht);
     }
     if (match) *match=match2;
 
@@ -475,11 +519,17 @@ CH_API CH_VALUE_TYPE* CH_HASHTABLE_TYPE_FCT(_get)(CH_HASHTABLE_TYPE* ht,const CH
     v = &ht->buckets[hash];
     if (!v->v || v->size==0)  return NULL;
 
-    /* slightly faster */
-    position =  v->size>2 ? CH_VECTOR_TYPE_FCT(_binary_search)(v,key,&match,ht) :
-                CH_VECTOR_TYPE_FCT(_linear_search)(v,key,&match,ht);
-    /* slightly slower */
-    /* position = CH_VECTOR_TYPE_FCT(_binary_search)(v,key,&match,ht); */
+    if (ht->key_cmp)    {
+        /* slightly faster */
+        position =  v->size>2 ? CH_VECTOR_TYPE_FCT(_binary_search)(v,key,&match,ht) :
+                    CH_VECTOR_TYPE_FCT(_linear_search)(v,key,&match,ht);
+        /* slightly slower */
+        /* position = CH_VECTOR_TYPE_FCT(_binary_search)(v,key,&match,ht); */
+    }
+    else    {
+        /* '_unsorted_search' uses memcmp(...) (when ht->key_cmp==NULL) */
+        position = CH_VECTOR_TYPE_FCT(_unsorted_search)(v,key,&match,ht);
+    }
 
     return (match ? &v->v[position].v : NULL);
 }
@@ -497,7 +547,17 @@ CH_API int CH_HASHTABLE_TYPE_FCT(_remove)(CH_HASHTABLE_TYPE* ht,const CH_KEY_TYP
 #   endif
     v = &ht->buckets[hash];
     if (!v->v)  return 0;
-    position = CH_VECTOR_TYPE_FCT(_binary_search)(v,key,&match,ht);
+    if (ht->key_cmp)    {
+        /* slightly faster */
+        position =  v->size>2 ? CH_VECTOR_TYPE_FCT(_binary_search)(v,key,&match,ht) :
+                    CH_VECTOR_TYPE_FCT(_linear_search)(v,key,&match,ht);
+        /* slightly slower */
+        /* position = CH_VECTOR_TYPE_FCT(_binary_search)(v,key,&match,ht); */
+    }
+    else    {
+        /* '_unsorted_search' uses memcmp(...) (when ht->key_cmp==NULL) */
+        position = CH_VECTOR_TYPE_FCT(_unsorted_search)(v,key,&match,ht);
+    }
     if (match) {
         CH_VECTOR_TYPE_FCT(_remove_at)(v,position,ht);
         return 1;
@@ -514,13 +574,13 @@ CH_API int CH_HASHTABLE_TYPE_FCT(_dbg_check)(const CH_HASHTABLE_TYPE* ht) {
     size_t i,j,num_total_items=0,num_sorting_errors=0,min_num_bucket_items=(size_t)-1,max_num_bucket_items=0,min_cnt=0,max_cnt=0,avg_cnt=0,avg_round=0;
     double avg_num_bucket_items=0.0,std_deviation=0.0;
     const CH_HASHTABLE_ITEM_TYPE* last_item = NULL;
-    CH_ASSERT(ht && ht->key_cmp);
+    CH_ASSERT(ht);
     for (i=0;i<CH_NUM_BUCKETS;i++) {
         const CH_VECTOR_TYPE* bck = &ht->buckets[i];
         num_total_items+=bck->size;
         if (min_num_bucket_items>bck->size) min_num_bucket_items=bck->size;
         if (max_num_bucket_items<bck->size) max_num_bucket_items=bck->size;
-        if (bck->v && bck->size) {
+        if (ht->key_cmp && bck->v && bck->size) {
             last_item = NULL;
             for (j=0;j<bck->size;j++)  {
                 const CH_HASHTABLE_ITEM_TYPE* item = &bck->v[j];
@@ -529,7 +589,7 @@ CH_API int CH_HASHTABLE_TYPE_FCT(_dbg_check)(const CH_HASHTABLE_TYPE* ht) {
                         /* When this happens, it can be a wrong user 'key_cmp' function (that cannot sort keys in a consistent way) */
                         ++num_sorting_errors;
 #                       ifndef CH_NO_STDIO
-                        printf("[ch_hashtable_dbg_check] Error: in bucket[%lu]: key_cmp(%lu,%lu)<=0 [num_items=%lu (in bucket)]\n",i,j-1,j,bck->size);
+                        printf("[%s] Error: in bucket[%lu]: key_cmp(%lu,%lu)<=0 [num_items=%lu (in bucket)]\n",CH_XSTR(CH_HASHTABLE_TYPE_FCT(_dbg_check)),i,j-1,j,bck->size);
 #                       endif
                     }
                 }
@@ -571,13 +631,13 @@ CH_API int CH_HASHTABLE_TYPE_FCT(_dbg_check)(const CH_HASHTABLE_TYPE* ht) {
         }
     }
 #   ifndef CH_NO_STDIO
-    printf("[ch_hashtable_dbg_check] num_total_items=%lu in %d buckets [items per bucket: mean=%1.3f std_deviation=%1.3f min=%lu (in %lu/%d) avg=%lu (in %lu/%d) max=%lu (in %lu/%d)]\n",num_total_items,CH_NUM_BUCKETS,avg_num_bucket_items,std_deviation,min_num_bucket_items,min_cnt,CH_NUM_BUCKETS,avg_round,avg_cnt,CH_NUM_BUCKETS,max_num_bucket_items,max_cnt,CH_NUM_BUCKETS);
+    printf("[%s] num_total_items=%lu in %d buckets [items per bucket: mean=%1.3f std_deviation=%1.3f min=%lu (in %lu/%d) avg=%lu (in %lu/%d) max=%lu (in %lu/%d)]\n",CH_XSTR(CH_HASHTABLE_TYPE_FCT(_dbg_check)),num_total_items,CH_NUM_BUCKETS,avg_num_bucket_items,std_deviation,min_num_bucket_items,min_cnt,CH_NUM_BUCKETS,avg_round,avg_cnt,CH_NUM_BUCKETS,max_num_bucket_items,max_cnt,CH_NUM_BUCKETS);
 #   endif
     CH_ASSERT(num_sorting_errors==0); /* When this happens, it can be a wrong user 'itemKey_cmp' function (that cannot sort keys in a consistent way) */
     return num_total_items;
 }
 
-/* untested functions */
+/* two untested functions */
 CH_API void CH_HASHTABLE_TYPE_FCT(_swap)(CH_HASHTABLE_TYPE* a,CH_HASHTABLE_TYPE* b)  {
     CH_HASHTABLE_TYPE t;
     CH_ASSERT(a && b);
@@ -621,6 +681,69 @@ CH_API void CH_HASHTABLE_TYPE_FCT(_cpy)(CH_HASHTABLE_TYPE* a,const CH_HASHTABLE_
     }
 }
 
+CH_API void CH_HASHTABLE_TYPE_FCT(_create_with)(
+        CH_HASHTABLE_TYPE* ht,
+        ch_hash_uint (*key_hash)(const CH_KEY_TYPE*),
+        int (*key_cmp) (const CH_CMP_TYPE*,const CH_CMP_TYPE*),
+        void (*key_ctr)(CH_KEY_TYPE*),void (*key_dtr)(CH_KEY_TYPE*),void (*key_cpy)(CH_KEY_TYPE*,const CH_KEY_TYPE*),
+        void (*value_ctr)(CH_VALUE_TYPE*),void (*value_dtr)(CH_VALUE_TYPE*),void (*value_cpy)(CH_VALUE_TYPE*,const CH_VALUE_TYPE*),
+        size_t initial_bucket_capacity)   {
+    typedef ch_hash_uint (*key_hash_type)(const CH_KEY_TYPE*);
+    typedef int (*key_cmp_type)(const CH_CMP_TYPE*,const CH_CMP_TYPE*);
+    typedef void (*key_ctr_dtr_type)(CH_KEY_TYPE*);
+    typedef void (*key_cpy_type)(CH_KEY_TYPE*,const CH_KEY_TYPE*);
+    typedef void (*value_ctr_dtr_type)(CH_VALUE_TYPE*);
+    typedef void (*value_cpy_type)(CH_VALUE_TYPE*,const CH_VALUE_TYPE*);
+#   ifndef CH_DISABLE_FAKE_MEMBER_FUNCTIONS
+    typedef void (* clear_free_mf)(CH_HASHTABLE_TYPE*);
+    typedef CH_VALUE_TYPE* (* get_or_insert_mf)(CH_HASHTABLE_TYPE*,const CH_KEY_TYPE*,int*);
+    typedef CH_VALUE_TYPE* (* get_or_insert_by_val_mf)(CH_HASHTABLE_TYPE*,const CH_KEY_TYPE,int*);
+    typedef CH_VALUE_TYPE* (* get_mf)(CH_HASHTABLE_TYPE*,const CH_KEY_TYPE*);
+    typedef CH_VALUE_TYPE* (* get_by_val_mf)(CH_HASHTABLE_TYPE*,const CH_KEY_TYPE);
+    typedef const CH_VALUE_TYPE* (* get_const_mf)(const CH_HASHTABLE_TYPE*,const CH_KEY_TYPE*);
+    typedef const CH_VALUE_TYPE* (* get_const_by_val_mf)(const CH_HASHTABLE_TYPE*,const CH_KEY_TYPE);
+    typedef int (* remove_mf)(CH_HASHTABLE_TYPE*,const CH_KEY_TYPE*);
+    typedef int (* remove_by_val_mf)(CH_HASHTABLE_TYPE*,const CH_KEY_TYPE);
+    typedef size_t (* get_num_items_mf)(const CH_HASHTABLE_TYPE* ht);
+    typedef int (* dbg_check_mf)(const CH_HASHTABLE_TYPE*);
+    typedef void (* swap_mf)(CH_HASHTABLE_TYPE* a,CH_HASHTABLE_TYPE* b);
+    typedef void (* cpy_mf)(CH_HASHTABLE_TYPE* a,const CH_HASHTABLE_TYPE* b);
+#   endif
+    CH_ASSERT(ht);
+    memset(ht,0,sizeof(CH_HASHTABLE_TYPE));
+    *((key_hash_type*)&ht->key_hash) = key_hash;
+    *((key_cmp_type*)&ht->key_cmp) = key_cmp;
+    *((key_ctr_dtr_type*)&ht->key_ctr) = key_ctr;
+    *((key_ctr_dtr_type*)&ht->key_dtr) = key_dtr;
+    *((key_cpy_type*)&ht->key_cpy) = key_cpy;
+    *((value_ctr_dtr_type*)&ht->value_ctr) = value_ctr;
+    *((value_ctr_dtr_type*)&ht->value_dtr) = value_dtr;
+    *((value_cpy_type*)&ht->value_cpy) = value_cpy;
+    *((size_t*)&ht->initial_bucket_capacity) = initial_bucket_capacity>1 ? initial_bucket_capacity : 1;
+    CH_ASSERT(ht->key_hash);
+    /*memset(ht->buckets,0,CH_NUM_BUCKETS*sizeof(CH_VECTOR_TYPE));*/
+#   ifndef CH_DISABLE_FAKE_MEMBER_FUNCTIONS
+    *((clear_free_mf*)&ht->clear) = &CH_HASHTABLE_TYPE_FCT(_clear);
+    *((clear_free_mf*)&ht->free) = &CH_HASHTABLE_TYPE_FCT(_free);
+    *((get_or_insert_mf*)&ht->get_or_insert) = &CH_HASHTABLE_TYPE_FCT(_get_or_insert);
+    *((get_or_insert_by_val_mf*)&ht->get_or_insert_by_val) = &CH_HASHTABLE_TYPE_FCT(_get_or_insert_by_val);
+    *((get_mf*)&ht->get) = &CH_HASHTABLE_TYPE_FCT(_get);
+    *((get_by_val_mf*)&ht->get_by_val) = &CH_HASHTABLE_TYPE_FCT(_get_by_val);
+    *((get_const_mf*)&ht->get_const) = &CH_HASHTABLE_TYPE_FCT(_get_const);
+    *((get_const_by_val_mf*)&ht->get_const_by_val) = &CH_HASHTABLE_TYPE_FCT(_get_const_by_val);
+    *((remove_mf*)&ht->remove) = &CH_HASHTABLE_TYPE_FCT(_remove);
+    *((remove_by_val_mf*)&ht->remove_by_val) = &CH_HASHTABLE_TYPE_FCT(_remove_by_val);
+    *((get_num_items_mf*)&ht->get_num_items) = &CH_HASHTABLE_TYPE_FCT(_get_num_items);
+    *((dbg_check_mf*)&ht->dbg_check) = &CH_HASHTABLE_TYPE_FCT(_dbg_check);
+    *((swap_mf*)&ht->swap) = &CH_HASHTABLE_TYPE_FCT(_swap);
+    *((cpy_mf*)&ht->cpy) = &CH_HASHTABLE_TYPE_FCT(_cpy);
+#   endif
+}
+CH_API void CH_HASHTABLE_TYPE_FCT(_create)(CH_HASHTABLE_TYPE* ht,ch_hash_uint (*key_hash)(const CH_KEY_TYPE*),int (*key_cmp) (const CH_CMP_TYPE*,const CH_CMP_TYPE*),size_t initial_bucket_capacity)    {
+    CH_HASHTABLE_TYPE_FCT(_create_with)(ht,key_hash,key_cmp,NULL,NULL,NULL,NULL,NULL,NULL,initial_bucket_capacity);
+}
+
+
 #undef CH_HASHTABLE_TYPE_FCT
 #undef CH_KEY_TYPE_FCT
 #undef CH_VECTOR_TYPE_FCT
@@ -628,6 +751,7 @@ CH_API void CH_HASHTABLE_TYPE_FCT(_cpy)(CH_HASHTABLE_TYPE* a,const CH_HASHTABLE_
 #undef CH_USE_VOID_PTRS_IN_CMP_FCT
 #undef CH_HASHTABLE_TYPE
 #undef CH_VECTOR_TYPE
+#undef CHV_KEY_SUPPORT_EQUALITY_CMP_IN_UNSORTED_SEARCH
 #undef CH_HASHTABLE_ITEM_TYPE_TMP
 #undef CH_HASHTABLE_ITEM_TYPE
 #undef CH_LAST_INCLUDED_NUM_BUCKETS

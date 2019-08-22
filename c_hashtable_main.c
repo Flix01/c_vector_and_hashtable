@@ -130,7 +130,18 @@ static void SimpleTest(void)    {
     size_t i,k,j;int match;
 
     printf("HASHTABLE TEST:\n");
-    ch_mykey_myvalue_create(&ht,&mykey_hash,&mykey_cmp,NULL,NULL,NULL,NULL,NULL,NULL,1);
+    ch_mykey_myvalue_create(&ht,&mykey_hash,&mykey_cmp,1);
+
+    /* OK, now if we don't define CH_DISABLE_FAKE_MEMBER_FUNCTIONS
+       (that must be set globally, in the Project Options),
+       we have access to all the OTHER 'ch_mykey_myvalue_' functions
+       (except 'ch_mykey_myvalue_create' or 'ch_mykey_myvalue_create_with',
+       that MUST be called to make this feature work), by using
+       'fake member functions'. For example these two calls are the equivalent:
+       ch_mykey_myvalue_get_or_insert(&ht,...);
+       ht.get_or_insert(&ht,...);       // Note that ht appears twice in this line
+       However in this demo we won't use the second syntax.
+    */
 
     /* Fetch 'tmpkey', and, if not found, insert it and give it a 'value' */
     tmpkey.a = 100;tmpkey.b = 50;tmpkey.c = 25;    /* we don't need to set 'value' here */
@@ -269,10 +280,10 @@ static void StringStringTest(void)  {
     size_t i,k,j;
 
     printf("\nSTRING-STRING TEST:\n");
-    ch_string_string_create(&ht,&string_hash,&string_cmp,
-                            &string_ctr,&string_dtr,&string_cpy,    /* key */
-                            &string_ctr,&string_dtr,&string_cpy,    /* value */
-                            1);
+    ch_string_string_create_with(   &ht,&string_hash,&string_cmp,
+                                    &string_ctr,&string_dtr,&string_cpy,    /* key */
+                                    &string_ctr,&string_dtr,&string_cpy,    /* value */
+                                    1);
 
     /* this inserts: ht["name"]="John"; */
     string_setter(ch_string_string_get_or_insert_by_val(&ht,"name",0),"John");
