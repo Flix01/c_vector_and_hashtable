@@ -108,7 +108,7 @@ static void SimpleTest(void)   {
 
     /* Note that we could just have initialized 'v' this way: 'cv_mystruct v={0};' but
        by using 'cv_mystruct_create(...)' we enable the 'fake member function call syntax' */
-    cv_mystruct_create(&v);
+    cv_mystruct_create(&v,NULL);
     /* With the 'fake member function call syntax', we can make fake member calls like:
        v.reserve(&v,4); // note that 'v' appears twice
        However in this demo we don't use this syntax (that can be removed by defining
@@ -146,9 +146,9 @@ static void SimpleTest(void)   {
 
     printf("\nSORTED VECTOR TEST:\n");
 
-    /* 'cv_mystruct_create_with(...)' can be called only to replace the initializer list, or after 'cv_mystruct_free(...)' */
+    /* 'cv_mystruct_create(...)' or 'cv_mystruct_create_with(...)' can be called only to replace the initializer list, or after 'cv_mystruct_free(...)' */
     /* we need it just because we must change 'v.item_cmp', which is const to prevent users from changing it on the fly and break sorting */
-    cv_mystruct_create_with(&v,&mystruct_cmp,NULL,NULL,NULL);    /* we can set 'mystruct_cmp' in its initialization list, or in 'cv_mystruct_create(...)' too */
+    cv_mystruct_create(&v,&mystruct_cmp);    /* we can set 'mystruct_cmp' in its initialization list, or in 'cv_mystruct_create(...)' too */
 
     /* we add 5 items in a sorted way */
     tmp.a=200;cv_mystruct_insert_sorted(&v,&tmp,NULL,1);
@@ -161,6 +161,11 @@ static void SimpleTest(void)   {
 
     /* display all items */
     for (i=0;i<v.size;i++) printf("v[%lu]={\t%d,\t%d,\t%d};\n",i,v.v[i].a,v.v[i].b,v.v[i].c);
+
+    /* (optional) debug and optimize memory usage */
+    cv_mystruct_dbg_check(&v);  /* displays dbg info */
+    cv_mystruct_trim(&v);       /* frees all unused memory (slow) */
+    cv_mystruct_dbg_check(&v);  /* displays dbg info again */
 
     /* now we can serch the sorted vector for certain items this way */
     tmp.a=100;tmp.b=50;tmp.c=333;
@@ -213,6 +218,7 @@ static void StringVectorTest(void) {
 
     printf("\nSORTED STRINGVECTOR TEST:\n");
 
+    /* cv_string_create_with(...) is like cv_string_create(...) with additional params */
     /* in our case we can simply replace '&string_ctr' with 'NULL', because new allocated memory is always cleared (to increase code robustness) */
     cv_string_create_with(&s,&string_cmp,&string_ctr,&string_dtr,&string_cpy);
 
@@ -279,7 +285,7 @@ typedef struct {
    we need to specify ctr/dtr/cpy helpers: */
 static void big_t_ctr(big_t* a)    {
     a->a=0;
-    cv_mystruct_create(&a->v);  /* this can be thought as the 'cv_mystruct' ctr */
+    cv_mystruct_create(&a->v,NULL);  /* this can be thought as the 'cv_mystruct' ctr */
 }
 static void big_t_dtr(big_t* a)    {
     cv_mystruct_free(&a->v);    /* this can be thought as the 'cv_mystruct' dtr */

@@ -50,16 +50,21 @@ freely, subject to the following restrictions:
 #endif
 
 #ifndef CV_VERSION
-#define CV_VERSION               "1.01"
-#define CV_VERSION_NUM           0101
+#define CV_VERSION               "1.02"
+#define CV_VERSION_NUM           0102
 #endif
 
 /* TODO:
-     -> add a method to debug and trim unused memory
      -> reconsider and reimplement 'clearing memory' before item ctrs
+     -> see if reserve should not grow capacity (and we should move growing to resize)
 */
 /* HISTORY:
-   CH_VERSION_NUM 0101:
+   CV_VERSION_NUM 0102:
+   -> fixed 'cv_xxx_swap(...)'
+   -> added a 'cv_xxx_dbg_check(...)'
+   -> added 'cv_xxx_trim(...)' to optimize memory usage for current storage
+
+   CV_VERSION_NUM 0101:
    -> added 'fake member function calls' syntax like:
         cv_mystruct v;	// no C init here for fake member functions
         cv_mystruct_create_with(&v,...);	// this inits fake members functions too now
@@ -123,7 +128,6 @@ extern "C"	{
 #define CV_API __inline static
 #endif
 
-/* the following 4 lines can be removed */
 #ifndef CV_XSTR
 #define CV_XSTR(s) CV_STR(s)
 #define CV_STR(s) #s
@@ -158,6 +162,7 @@ struct CV_VECTOR_TYPE {
 #   ifndef CV_DISABLE_FAKE_MEMBER_FUNCTIONS  /* must be defined glabally (in the Project Options)) */
     void (* const free)(CV_VECTOR_TYPE* v);
     void (* const clear)(CV_VECTOR_TYPE* v);
+    void (* const trim)(CV_VECTOR_TYPE* v);
     void (* const swap)(CV_VECTOR_TYPE* a,CV_VECTOR_TYPE* b);
     void (* const reserve)(CV_VECTOR_TYPE* v,size_t size);
     void (* const resize)(CV_VECTOR_TYPE* v,size_t size);
@@ -176,6 +181,7 @@ struct CV_VECTOR_TYPE {
     size_t (* const insert_sorted_by_val)(CV_VECTOR_TYPE* v,const CV_TYPE item_to_insert,int* match,int insert_even_if_item_match);
     int (* const remove_at)(CV_VECTOR_TYPE* v,size_t position);
     void (* const cpy)(CV_VECTOR_TYPE* a,const CV_VECTOR_TYPE* b);
+    void (* const dbg_check)(const CV_VECTOR_TYPE* v);
 #   endif
 };
 #endif /* CV_VECTOR_TYPE */
@@ -213,6 +219,24 @@ CV_API void* cv_safe_realloc(void** const ptr, size_t new_size)  {
     }
     return ptr2;
 }
+CV_API void cv_convert_bytes(size_t bytes_in,size_t pTGMKB[5])   {
+    size_t i;pTGMKB[4] = bytes_in;
+    for (i=0;i<4;i++)  {pTGMKB[3-i]=pTGMKB[4-i]/1024;pTGMKB[4-i]%=1024;}
+}
+#   ifndef CV_NO_STDIO
+CV_API void cv_display_bytes(size_t bytes_in)   {
+    size_t pTGMKB[5],i,cnt=0;
+    const char* names[5] = {"TB","GB","MB","KB","Bytes"};
+    cv_convert_bytes(bytes_in,pTGMKB);
+    for (i=0;i<5;i++)   {
+        if (pTGMKB[i]!=0) {
+            if (cnt>0) printf(" ");
+            printf("%lu %s",pTGMKB[i],names[i]);
+            ++cnt;
+        }
+    }
+}
+#   endif
 #endif /* CV_PRIV_FUNCTIONS */
 
 /* warning: internal function. Implementation can't be modified, because some optimizations bypass it */
@@ -252,9 +276,9 @@ CV_API void CV_VECTOR_TYPE_FCT(_clear)(CV_VECTOR_TYPE* v)	{
 CV_API void CV_VECTOR_TYPE_FCT(_swap)(CV_VECTOR_TYPE* a,CV_VECTOR_TYPE* b)  {
     unsigned char t[sizeof(CV_VECTOR_TYPE)];
     CV_ASSERT(a && b);
-    memcpy(t,&a,sizeof(CV_VECTOR_TYPE));
-    memcpy(&a,&b,sizeof(CV_VECTOR_TYPE));
-    memcpy(&b,t,sizeof(CV_VECTOR_TYPE));
+    memcpy(t,a,sizeof(CV_VECTOR_TYPE));
+    memcpy(a,b,sizeof(CV_VECTOR_TYPE));
+    memcpy(b,t,sizeof(CV_VECTOR_TYPE));
 }
 CV_API void CV_VECTOR_TYPE_FCT(_reserve)(CV_VECTOR_TYPE* v,size_t size)	{
 	/*printf("ok %s (sizeof(%s)=%lu)\n",CV_XSTR(CV_VECTOR_TYPE_FCT(_reserve)),CV_XSTR(CV_TYPE),sizeof(CV_TYPE));*/
@@ -424,6 +448,50 @@ CV_API void CV_VECTOR_TYPE_FCT(_cpy)(CV_VECTOR_TYPE* a,const CV_VECTOR_TYPE* b) 
     if (!a->item_cpy)   {memcpy(&a->v[0],&b->v[0],a->size*sizeof(CV_TYPE));}
     else    {for (i=0;i<a->size;i++) a->item_cpy(&a->v[i],&b->v[i]);}
 }
+CV_API void CV_VECTOR_TYPE_FCT(_trim)(CV_VECTOR_TYPE* v)	{
+    if (v)	{
+        CV_VECTOR_TYPE o = {0};
+        CV_VECTOR_TYPE_FCT(_cpy)(&o,v); /* now 'o' is 'v' trimmed */
+        CV_VECTOR_TYPE_FCT(_free)(v);
+        CV_VECTOR_TYPE_FCT(_swap)(&o,v);
+    }
+}
+CV_API void CV_VECTOR_TYPE_FCT(_dbg_check)(const CV_VECTOR_TYPE* v)  {
+    size_t j,num_sorting_errors=0;
+    const size_t mem_minimal=sizeof(CV_VECTOR_TYPE)+sizeof(CV_TYPE)*v->size;
+    const size_t mem_used=sizeof(CV_VECTOR_TYPE)+sizeof(CV_TYPE)*v->capacity;
+    const double mem_used_percentage = (double)mem_used*100.0/(double)mem_minimal;
+    CV_ASSERT(v);
+    if (v->item_cmp && v->size)    {
+        const CV_TYPE* last_item = NULL;
+        for (j=0;j<v->size;j++)  {
+            const CV_TYPE* item = &v->v[j];
+            if (last_item) {
+                if (v->item_cmp(last_item,item)>=0) {
+                    /* When this happens, it can be a wrong user 'item_cmp' function (that cannot sort items in a consistent way) */
+                    ++num_sorting_errors;
+#                   ifndef CV_NO_STDIO
+                    /*printf("[%s] Error: in v[%lu]: item_cmp(%lu,%lu)<=0 [num_items=%lu]\n",CV_XSTR(CV_VECTOR_TYPE_FCT(_dbg_check)),j-1,j,v->size);*/
+#                   endif
+                }
+            }
+            last_item=item;
+        }
+    }
+#   ifndef CV_NO_STDIO
+    printf("[%s]:\n",CV_XSTR(CV_VECTOR_TYPE_FCT(_dbg_check)));
+    printf("\tsize: %lu. capacity: %lu. sizeof(%s): ",v->size,v->capacity,CV_XSTR(CV_TYPE));cv_display_bytes(sizeof(CV_TYPE));printf(".\n");
+    if (v->item_cmp && v->size) {
+        if (num_sorting_errors==0) printf("\tsorting: OK.\n");
+        else printf("\tsorting: NO (%lu sorting errors detected).\n",num_sorting_errors);
+    }
+    printf("\tmemory_used: ");cv_display_bytes(mem_used);
+    printf(". memory_minimal_possible: ");cv_display_bytes(mem_minimal);
+    printf(". mem_used_percentage: %1.2f%% (100%% is the best possible result).\n",mem_used_percentage);
+#   endif
+    /*CV_ASSERT(num_sorting_errors==0);*/ /* When this happens, it can be a wrong user 'itemKey_cmp' function (that cannot sort keys in a consistent way) */
+}
+
 
 /* create methods */
 CV_API void CV_VECTOR_TYPE_FCT(_create_with)(CV_VECTOR_TYPE* v,int (*item_cmp)(const CV_CMP_TYPE*,const CV_CMP_TYPE*),void (*item_ctr)(CV_TYPE*),void (*item_dtr)(CV_TYPE*),void (*item_cpy)(CV_TYPE*,const CV_TYPE*))	{
@@ -431,7 +499,7 @@ CV_API void CV_VECTOR_TYPE_FCT(_create_with)(CV_VECTOR_TYPE* v,int (*item_cmp)(c
     typedef void (*item_cpy_type)(CV_TYPE*,const CV_TYPE*);
     typedef int (*item_cmp_type)(const CV_CMP_TYPE*,const CV_CMP_TYPE*);
 #   ifndef CV_DISABLE_FAKE_MEMBER_FUNCTIONS  /* must be defined glabally (in the Project Options)) */
-    typedef void (* free_clear_pop_back_mf)(CV_VECTOR_TYPE*);
+    typedef void (* free_clear_trim_pop_back_mf)(CV_VECTOR_TYPE*);
     typedef void (* swap_mf)(CV_VECTOR_TYPE*,CV_VECTOR_TYPE*);
     typedef void (* reserve_mf)(CV_VECTOR_TYPE*,size_t);
     typedef void (* resize_mf)(CV_VECTOR_TYPE*,size_t);
@@ -447,6 +515,7 @@ CV_API void CV_VECTOR_TYPE_FCT(_create_with)(CV_VECTOR_TYPE* v,int (*item_cmp)(c
     typedef size_t (* insert_sorted_by_val_mf)(CV_VECTOR_TYPE*,const CV_TYPE,int*,int);
     typedef int (* remove_at_mf)(CV_VECTOR_TYPE*,size_t);
     typedef void (* cpy_mf)(CV_VECTOR_TYPE*,const CV_VECTOR_TYPE*);
+    typedef void (* dbg_check_mf)(const CV_VECTOR_TYPE*);
 #   endif
     CV_ASSERT(v);
     memset(v,0,sizeof(CV_VECTOR_TYPE));
@@ -455,8 +524,9 @@ CV_API void CV_VECTOR_TYPE_FCT(_create_with)(CV_VECTOR_TYPE* v,int (*item_cmp)(c
     *((item_cpy_type*)&v->item_cpy)=item_cpy;
     *((item_cmp_type*)&v->item_cmp)=item_cmp;
 #   ifndef CV_DISABLE_FAKE_MEMBER_FUNCTIONS  /* must be defined glabally (in the Project Options)) */
-    *((free_clear_pop_back_mf*)&v->free)=&CV_VECTOR_TYPE_FCT(_free);
-    *((free_clear_pop_back_mf*)&v->clear)=&CV_VECTOR_TYPE_FCT(_clear);
+    *((free_clear_trim_pop_back_mf*)&v->free)=&CV_VECTOR_TYPE_FCT(_free);
+    *((free_clear_trim_pop_back_mf*)&v->clear)=&CV_VECTOR_TYPE_FCT(_clear);
+    *((free_clear_trim_pop_back_mf*)&v->trim)=&CV_VECTOR_TYPE_FCT(_trim);
     *((swap_mf*)&v->swap)=&CV_VECTOR_TYPE_FCT(_swap);
     *((reserve_mf*)&v->reserve)=&CV_VECTOR_TYPE_FCT(_reserve);
     *((resize_mf*)&v->resize)=&CV_VECTOR_TYPE_FCT(_resize);
@@ -464,7 +534,7 @@ CV_API void CV_VECTOR_TYPE_FCT(_create_with)(CV_VECTOR_TYPE* v,int (*item_cmp)(c
     *((resize_with_by_val_mf*)&v->resize_with_by_val)=&CV_VECTOR_TYPE_FCT(_resize_with_by_val);
     *((push_back_mf*)&v->push_back)=&CV_VECTOR_TYPE_FCT(_push_back);
     *((push_back_by_val_mf*)&v->push_back_by_val)=&CV_VECTOR_TYPE_FCT(_push_back_by_val);
-    *((free_clear_pop_back_mf*)&v->pop_back)=&CV_VECTOR_TYPE_FCT(_pop_back);
+    *((free_clear_trim_pop_back_mf*)&v->pop_back)=&CV_VECTOR_TYPE_FCT(_pop_back);
     *((search_mf*)&v->linear_search)=&CV_VECTOR_TYPE_FCT(_linear_search);
     *((search_by_val_mf*)&v->linear_search_by_val)=&CV_VECTOR_TYPE_FCT(_linear_search_by_val);
     *((search_mf*)&v->binary_search)=&CV_VECTOR_TYPE_FCT(_binary_search);
@@ -475,9 +545,10 @@ CV_API void CV_VECTOR_TYPE_FCT(_create_with)(CV_VECTOR_TYPE* v,int (*item_cmp)(c
     *((insert_sorted_by_val_mf*)&v->insert_sorted_by_val)=&CV_VECTOR_TYPE_FCT(_insert_sorted_by_val);
     *((remove_at_mf*)&v->remove_at)=&CV_VECTOR_TYPE_FCT(_remove_at);
     *((cpy_mf*)&v->cpy)=&CV_VECTOR_TYPE_FCT(_cpy);
+    *((dbg_check_mf*)&v->dbg_check)=&CV_VECTOR_TYPE_FCT(_dbg_check);
 #   endif
 }
-CV_API void CV_VECTOR_TYPE_FCT(_create)(CV_VECTOR_TYPE* v)  {CV_VECTOR_TYPE_FCT(_create_with)(v,NULL,NULL,NULL,NULL);}
+CV_API void CV_VECTOR_TYPE_FCT(_create)(CV_VECTOR_TYPE* v,int (*item_cmp)(const CV_CMP_TYPE*,const CV_CMP_TYPE*))  {CV_VECTOR_TYPE_FCT(_create_with)(v,item_cmp,NULL,NULL,NULL);}
 
 #undef CV_VECTOR_TYPE_FCT
 #undef CV_TYPE_FCT
