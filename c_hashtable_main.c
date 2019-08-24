@@ -17,11 +17,13 @@ gcc -O2 -x c++ -no-pie -fno-pie c_hashtable_main.c -o c_hashtable_main
 // or just
 g++ -O2 -no-pie -fno-pie c_hashtable_main.c -o c_hashtable_main
 
+//-----------------------------------------------
 // C++ COMPILATION DOES NOT SEEM TO WORK FOR ME!
+//-----------------------------------------------
+and I'm not goint to fix it!
 */
 
-/* program output:
-
+/* Program Output:
 HASHTABLE TEST:
 Added item ht[	100,	50,	25]	=	["100-50-25"].
 Added item ht[	5,	43,	250]	=	["5-43-250"].
@@ -36,7 +38,12 @@ An item with key[	10,	250,	125] is NOT present.
 All items (generally unsorted):
 0) ht[	5,	43,	250]	=	["5-43-250"].
 1) ht[	100,	50,	25]	=	["100-50-25"].
-[ch_hashtable_dbg_check] num_total_items=2 in 256 buckets [items per bucket: mean=0.008 std_deviation=0.088 min=0 (in 254/256) avg=0 (in 254/256) max=1 (in 2/256)]
+[ch_mykey_myvalue_dbg_check]:
+    num_total_items=2 (num_total_capacity=3) in 256 buckets [items per bucket: mean=0.008 std_deviation=0.088 min=0 (in 254/256) avg=0 (in 254/256) max=1 (in 2/256)].
+    memory_used: 6 KB 324 Bytes. memory_minimal_possible: 6 KB 280 Bytes. mem_used_percentage: 100.68% (100% is the best possible result).
+[ch_mykey_myvalue_dbg_check]:
+    num_total_items=2 (num_total_capacity=2) in 256 buckets [items per bucket: mean=0.008 std_deviation=0.088 min=0 (in 254/256) avg=0 (in 254/256) max=1 (in 2/256)].
+    memory_used: 6 KB 280 Bytes. memory_minimal_possible: 6 KB 280 Bytes. mem_used_percentage: 100.00% (100% is the best possible result).
 
 STRING-STRING TEST:
 All items (generally unsorted):
@@ -45,7 +52,9 @@ All items (generally unsorted):
 2) ht["brother"] = ["Eddie Duke of the Hills"];
 3) ht["profession"] = ["plumber"];
 4) ht["very famous nickname"] = ["Super Johnny"];
-[ch_hashtable_dbg_check] num_total_items=5 in 256 buckets [items per bucket: mean=0.020 std_deviation=0.139 min=0 (in 251/256) avg=0 (in 251/256) max=1 (in 5/256)]
+[ch_string_string_dbg_check]:
+    num_total_items=5 (num_total_capacity=5) in 256 buckets [items per bucket: mean=0.020 std_deviation=0.139 min=0 (in 251/256) avg=0 (in 251/256) max=1 (in 5/256)].
+    memory_used: 6 KB 272 Bytes. memory_minimal_possible: 6 KB 272 Bytes. mem_used_percentage: 100.00% (100% is the best possible result).
 Removed item with key "gender".
 All items (generally unsorted):
 0) ht["name"] = ["John"];
@@ -207,6 +216,12 @@ static void SimpleTest(void)    {
             printf("%lu) ht[\t%d,\t%d,\t%d]\t=\t[\"%s\"].\n",k++,pitem->k.a,pitem->k.b,pitem->k.c,pitem->v.name);
         }
     }
+    /* Please note that the user defined, type-safe definition 'CH_NUM_BUCKETS_mykey_myvalue'
+       is not strictly necessary, because we can use a syntax like:
+       '(sizeof(chvs_mykey_myvalue)/sizeof(chv_mykey_myvalue))' instread.
+       However I think that the type-safe definition is more user friendly
+    */
+    CH_ASSERT(CH_NUM_BUCKETS_mykey_myvalue==sizeof(chvs_mykey_myvalue)/sizeof(chv_mykey_myvalue));
 
     /* Remove 'tmpkey' */
     if (ch_mykey_myvalue_remove(&ht,&tmpkey)) printf("Removed item [\t%d,\t%d,\t%d]\n",tmpkey.a,tmpkey.b,tmpkey.c);
@@ -233,6 +248,8 @@ static void SimpleTest(void)    {
 
     /* Debug function that can be useful to detect sorting errors and
        optimize 'mykey_hash' (to reduce the standard deviation) and 'CH_NUM_BUCKETS_mykey_myvalue' */
+    ch_mykey_myvalue_dbg_check(&ht);
+    ch_mykey_myvalue_shrink_to_fit(&ht);    /* removes unused capacity (slow) */
     ch_mykey_myvalue_dbg_check(&ht);
 
     /* destroy hashtable 'ht' */

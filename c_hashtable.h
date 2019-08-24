@@ -56,17 +56,24 @@ freely, subject to the following restrictions:
 #endif
 
 #ifndef CH_VERSION
-#define CH_VERSION               "1.02"
-#define CH_VERSION_NUM           0102
+#define CH_VERSION               "1.03"
+#define CH_VERSION_NUM           0103
 #endif
 
 /* TODO:
-     -> add a method to trim unused memory
      -> reconsider and reimplement 'clearing memory' before item ctrs
+     -> see if 'reserve' should not grow capacity (and we should move growing to 'resize'):
+        [From the C++ reference: reserve][Increase the capacity of the vector to a value that's 'greater or equal' to 'new_cap'. If 'new_cap' is greater than the current capacity(), new storage is allocated, otherwise the method does nothing.]
+        So it seems it's O.K. to grow capacity inside 'reserve' (although most implementations do that inside 'resize']
 */
 /* HISTORY:
+   CH_VERSION_NUM 0103:
+   -> fixed 'ch_xxx_swap(...)'.
+   -> added ''ch_xxx_shrink_to_fit(...)'
+
    CH_VERSION_NUM 0102:
-   -> added used memory info to 'ch_xxx_dbg_check'.
+   -> added used memory info to 'ch_xxx_dbg_check(...)'.
+
    CH_VERSION_NUM 0101:
    -> allowed unsorted buckets (when key_cmp==NULL). Not very robust: they should never be used.
    -> added 'fake member function calls' syntax like:
@@ -193,6 +200,7 @@ extern "C"	{
 #define CH_HASHTABLE_ITEM_TYPE CH_CAT(CH_HASHTABLE_ITEM_TYPE_TMP,CH_VALUE_TYPE) 
 #define CH_HASHTABLE_TYPE CH_CAT(ch_,CH_HASHTABLE_ITEM_TYPE)
 #define CH_VECTOR_TYPE CH_CAT(chv_,CH_HASHTABLE_ITEM_TYPE)
+#define CH_VECTORS_TYPE CH_CAT(chvs_,CH_HASHTABLE_ITEM_TYPE)
 #define CH_VECTOR_TYPE_FCT(name) CH_CAT(CH_VECTOR_TYPE,name)
 typedef struct {
 	CH_KEY_TYPE k;
@@ -222,6 +230,7 @@ struct CH_HASHTABLE_TYPE {
 #   ifndef CH_DISABLE_FAKE_MEMBER_FUNCTIONS  /* must be defined glabally (in the Project Options)) */
     void (* const clear)(CH_HASHTABLE_TYPE* ht);
     void (* const free)(CH_HASHTABLE_TYPE* ht);
+    void (* const shrink_to_fit)(CH_HASHTABLE_TYPE* ht);
     CH_VALUE_TYPE* (* const get_or_insert)(CH_HASHTABLE_TYPE* ht,const CH_KEY_TYPE* key,int* match);
     CH_VALUE_TYPE* (* const get_or_insert_by_val)(CH_HASHTABLE_TYPE* ht,const CH_KEY_TYPE key,int* match);
     CH_VALUE_TYPE* (* const get)(CH_HASHTABLE_TYPE* ht,const CH_KEY_TYPE* key);
@@ -237,6 +246,7 @@ struct CH_HASHTABLE_TYPE {
 #   endif
 };
 typedef struct CH_VECTOR_TYPE CH_VECTOR_TYPE;
+typedef CH_VECTOR_TYPE CH_VECTORS_TYPE[CH_NUM_BUCKETS];
 #endif /* CH_HASHTABLE_TYPE */
 
 #ifndef CH_PRIV_FUNCTIONS
@@ -338,7 +348,7 @@ CH_API void CH_VECTOR_TYPE_FCT(_resize)(CH_VECTOR_TYPE* v,size_t size,const CH_H
     }
     *((size_t*) &v->size)=size;
 }
-CH_API size_t CH_VECTOR_TYPE_FCT(_unsorted_search)(CH_VECTOR_TYPE* v,const CH_KEY_TYPE* key,int* match,const CH_HASHTABLE_TYPE* ht)  {
+CH_API size_t CH_VECTOR_TYPE_FCT(_unsorted_search)(const CH_VECTOR_TYPE* v,const CH_KEY_TYPE* key,int* match,const CH_HASHTABLE_TYPE* ht)  {
     size_t i;
     CH_ASSERT(v && ht);
     if (match) *match=0;
@@ -359,7 +369,7 @@ CH_API size_t CH_VECTOR_TYPE_FCT(_unsorted_search)(CH_VECTOR_TYPE* v,const CH_KE
     CH_ASSERT(i==v->size);
     return i;
 }
-CH_API size_t CH_VECTOR_TYPE_FCT(_linear_search)(CH_VECTOR_TYPE* v,const CH_KEY_TYPE* key,int* match,const CH_HASHTABLE_TYPE* ht)  {
+CH_API size_t CH_VECTOR_TYPE_FCT(_linear_search)(const CH_VECTOR_TYPE* v,const CH_KEY_TYPE* key,int* match,const CH_HASHTABLE_TYPE* ht)  {
     int cmp=0;size_t i;
     CH_ASSERT(v && ht && ht->key_cmp);
     if (match) *match=0;
@@ -374,7 +384,7 @@ CH_API size_t CH_VECTOR_TYPE_FCT(_linear_search)(CH_VECTOR_TYPE* v,const CH_KEY_
     CH_ASSERT(i==v->size);
     return i;
 }
-CH_API size_t CH_VECTOR_TYPE_FCT(_binary_search)(CH_VECTOR_TYPE* v,const CH_KEY_TYPE* key,int* match,const CH_HASHTABLE_TYPE* ht)  {
+CH_API size_t CH_VECTOR_TYPE_FCT(_binary_search)(const CH_VECTOR_TYPE* v,const CH_KEY_TYPE* key,int* match,const CH_HASHTABLE_TYPE* ht)  {
     size_t first=0, last;
     size_t mid;int cmp;
     CH_ASSERT(v && ht && ht->key_cmp);
@@ -591,7 +601,7 @@ CH_API size_t CH_HASHTABLE_TYPE_FCT(_get_num_items)(const CH_HASHTABLE_TYPE* ht)
     return sum;
 }
 CH_API int CH_HASHTABLE_TYPE_FCT(_dbg_check)(const CH_HASHTABLE_TYPE* ht) {
-    size_t i,j,num_total_items=0,num_sorting_errors=0,min_num_bucket_items=(size_t)-1,max_num_bucket_items=0,min_cnt=0,max_cnt=0,avg_cnt=0,avg_round=0;
+    size_t i,j,num_total_items=0,num_total_capacity=0,num_sorting_errors=0,min_num_bucket_items=(size_t)-1,max_num_bucket_items=0,min_cnt=0,max_cnt=0,avg_cnt=0,avg_round=0;
     double avg_num_bucket_items=0.0,std_deviation=0.0;
     size_t mem_minimal=sizeof(CH_HASHTABLE_TYPE),mem_used=sizeof(CH_HASHTABLE_TYPE);
     double mem_used_percentage = 100;
@@ -600,6 +610,7 @@ CH_API int CH_HASHTABLE_TYPE_FCT(_dbg_check)(const CH_HASHTABLE_TYPE* ht) {
     for (i=0;i<CH_NUM_BUCKETS;i++) {
         const CH_VECTOR_TYPE* bck = &ht->buckets[i];
         num_total_items+=bck->size;
+        num_total_capacity+=bck->capacity;
         if (min_num_bucket_items>bck->size) min_num_bucket_items=bck->size;
         if (max_num_bucket_items<bck->size) max_num_bucket_items=bck->size;
         if (bck->v) {
@@ -659,7 +670,7 @@ CH_API int CH_HASHTABLE_TYPE_FCT(_dbg_check)(const CH_HASHTABLE_TYPE* ht) {
     }
 #   ifndef CH_NO_STDIO    
     printf("[%s]:\n",CH_XSTR(CH_HASHTABLE_TYPE_FCT(_dbg_check)));
-    printf("\tnum_total_items=%lu in %d buckets [items per bucket: mean=%1.3f std_deviation=%1.3f min=%lu (in %lu/%d) avg=%lu (in %lu/%d) max=%lu (in %lu/%d)].\n",num_total_items,CH_NUM_BUCKETS,avg_num_bucket_items,std_deviation,min_num_bucket_items,min_cnt,CH_NUM_BUCKETS,avg_round,avg_cnt,CH_NUM_BUCKETS,max_num_bucket_items,max_cnt,CH_NUM_BUCKETS);
+    printf("\tnum_total_items=%lu (num_total_capacity=%lu) in %d buckets [items per bucket: mean=%1.3f std_deviation=%1.3f min=%lu (in %lu/%d) avg=%lu (in %lu/%d) max=%lu (in %lu/%d)].\n",num_total_items,num_total_capacity,CH_NUM_BUCKETS,avg_num_bucket_items,std_deviation,min_num_bucket_items,min_cnt,CH_NUM_BUCKETS,avg_round,avg_cnt,CH_NUM_BUCKETS,max_num_bucket_items,max_cnt,CH_NUM_BUCKETS);
     printf("\tmemory_used: ");ch_display_bytes(mem_used);
     printf(". memory_minimal_possible: ");ch_display_bytes(mem_minimal);
     printf(". mem_used_percentage: %1.2f%% (100%% is the best possible result).\n",mem_used_percentage);
@@ -672,9 +683,9 @@ CH_API int CH_HASHTABLE_TYPE_FCT(_dbg_check)(const CH_HASHTABLE_TYPE* ht) {
 CH_API void CH_HASHTABLE_TYPE_FCT(_swap)(CH_HASHTABLE_TYPE* a,CH_HASHTABLE_TYPE* b)  {
     CH_HASHTABLE_TYPE t;
     CH_ASSERT(a && b);
-    memcpy(&t,&a,sizeof(CH_HASHTABLE_TYPE));
-    memcpy(&a,&b,sizeof(CH_HASHTABLE_TYPE));
-    memcpy(&b,&t,sizeof(CH_HASHTABLE_TYPE));
+    memcpy(&t,a,sizeof(CH_HASHTABLE_TYPE));
+    memcpy(a,b,sizeof(CH_HASHTABLE_TYPE));
+    memcpy(b,&t,sizeof(CH_HASHTABLE_TYPE));
 }
 CH_API void CH_HASHTABLE_TYPE_FCT(_cpy)(CH_HASHTABLE_TYPE* a,const CH_HASHTABLE_TYPE* b) {
     size_t i;
@@ -711,6 +722,15 @@ CH_API void CH_HASHTABLE_TYPE_FCT(_cpy)(CH_HASHTABLE_TYPE* a,const CH_HASHTABLE_
         else if(a->value_cpy)   {for (i=0;i<A->size;i++) {memcpy(&A->v[i].k,&B->v[i].k,sizeof(CH_KEY_TYPE));a->value_cpy(&A->v[i].v,&B->v[i].v);}}
     }
 }
+CH_API void CH_HASHTABLE_TYPE_FCT(_shrink_to_fit)(CH_HASHTABLE_TYPE* ht)   {
+    if (ht)	{
+        CH_HASHTABLE_TYPE o;
+        memset(&o,0,sizeof(CH_HASHTABLE_TYPE));
+        CH_HASHTABLE_TYPE_FCT(_cpy)(&o,ht); /* now 'o' is 'v' trimmed */
+        CH_HASHTABLE_TYPE_FCT(_free)(ht);
+        CH_HASHTABLE_TYPE_FCT(_swap)(&o,ht);
+    }
+}
 
 CH_API void CH_HASHTABLE_TYPE_FCT(_create_with)(
         CH_HASHTABLE_TYPE* ht,
@@ -726,7 +746,7 @@ CH_API void CH_HASHTABLE_TYPE_FCT(_create_with)(
     typedef void (*value_ctr_dtr_type)(CH_VALUE_TYPE*);
     typedef void (*value_cpy_type)(CH_VALUE_TYPE*,const CH_VALUE_TYPE*);
 #   ifndef CH_DISABLE_FAKE_MEMBER_FUNCTIONS
-    typedef void (* clear_free_mf)(CH_HASHTABLE_TYPE*);
+    typedef void (* clear_free_shrink_to_fit_mf)(CH_HASHTABLE_TYPE*);
     typedef CH_VALUE_TYPE* (* get_or_insert_mf)(CH_HASHTABLE_TYPE*,const CH_KEY_TYPE*,int*);
     typedef CH_VALUE_TYPE* (* get_or_insert_by_val_mf)(CH_HASHTABLE_TYPE*,const CH_KEY_TYPE,int*);
     typedef CH_VALUE_TYPE* (* get_mf)(CH_HASHTABLE_TYPE*,const CH_KEY_TYPE*);
@@ -754,8 +774,9 @@ CH_API void CH_HASHTABLE_TYPE_FCT(_create_with)(
     CH_ASSERT(ht->key_hash);
     /*memset(ht->buckets,0,CH_NUM_BUCKETS*sizeof(CH_VECTOR_TYPE));*/
 #   ifndef CH_DISABLE_FAKE_MEMBER_FUNCTIONS
-    *((clear_free_mf*)&ht->clear) = &CH_HASHTABLE_TYPE_FCT(_clear);
-    *((clear_free_mf*)&ht->free) = &CH_HASHTABLE_TYPE_FCT(_free);
+    *((clear_free_shrink_to_fit_mf*)&ht->clear) = &CH_HASHTABLE_TYPE_FCT(_clear);
+    *((clear_free_shrink_to_fit_mf*)&ht->free) = &CH_HASHTABLE_TYPE_FCT(_free);
+    *((clear_free_shrink_to_fit_mf*)&ht->shrink_to_fit) = &CH_HASHTABLE_TYPE_FCT(_shrink_to_fit);
     *((get_or_insert_mf*)&ht->get_or_insert) = &CH_HASHTABLE_TYPE_FCT(_get_or_insert);
     *((get_or_insert_by_val_mf*)&ht->get_or_insert_by_val) = &CH_HASHTABLE_TYPE_FCT(_get_or_insert_by_val);
     *((get_mf*)&ht->get) = &CH_HASHTABLE_TYPE_FCT(_get);
@@ -782,6 +803,7 @@ CH_API void CH_HASHTABLE_TYPE_FCT(_create)(CH_HASHTABLE_TYPE* ht,ch_hash_uint (*
 #undef CH_USE_VOID_PTRS_IN_CMP_FCT
 #undef CH_HASHTABLE_TYPE
 #undef CH_VECTOR_TYPE
+#undef CH_VECTORS_TYPE
 #undef CHV_KEY_SUPPORT_EQUALITY_CMP_IN_UNSORTED_SEARCH
 #undef CH_HASHTABLE_ITEM_TYPE_TMP
 #undef CH_HASHTABLE_ITEM_TYPE

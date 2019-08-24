@@ -35,6 +35,14 @@ v[1]={	100,	10,	333};
 v[2]={	100,	50,	333};
 v[3]={	200,	50,	333};
 v[4]={	500,	10,	333};
+[cv_mystruct_dbg_check]:
+    size: 5. capacity: 7. sizeof(mystruct): 12 Bytes.
+    sorting: OK.
+    memory_used: 316 Bytes. memory_minimal_possible: 292 Bytes. mem_used_percentage: 108.22% (100% is the best possible result).
+[cv_mystruct_dbg_check]:
+    size: 5. capacity: 5. sizeof(mystruct): 12 Bytes.
+    sorting: OK.
+    memory_used: 292 Bytes. memory_minimal_possible: 292 Bytes. mem_used_percentage: 100.00% (100% is the best possible result).
 item={	100,	50,	333}	found at v[2].
 item={	100,	10,	100}	not found.
 
@@ -100,7 +108,17 @@ together with a lot of type-safe functions starting with 'cv_mystruct_'
 */
 
 static void SimpleTest(void)   {
-    cv_mystruct v;                  /* a.k.a. std::vector<mystruct> */
+    cv_mystruct v                  /* a.k.a. std::vector<mystruct> */
+    = {
+#       ifndef __cplusplus
+            0
+#       endif
+    };
+    /* Note that initialization is not necessary when cv_mystruct_create(...) is used.
+       The 5 lines above are there just to allow compilation in C++ mode
+       where we must prevent code from calling a non-existent cv_mystruct::cv_mystruct()
+    */
+
     mystruct tmp = {-10,200,-5};	/* tmp item used later */
     size_t i,position;int match;
 
@@ -164,7 +182,7 @@ static void SimpleTest(void)   {
 
     /* (optional) debug and optimize memory usage */
     cv_mystruct_dbg_check(&v);  /* displays dbg info */
-    cv_mystruct_trim(&v);       /* frees all unused memory (slow) */
+    cv_mystruct_shrink_to_fit(&v);  /* frees all unused memory (slow) */
     cv_mystruct_dbg_check(&v);  /* displays dbg info again */
 
     /* now we can serch the sorted vector for certain items this way */
@@ -213,7 +231,16 @@ static void string_cpy(string* a,const string* b)    {
 #endif /* C_VECTOR_string_H */
 
 static void StringVectorTest(void) {
-    cv_string s;    /* a.k.a. std::vector<string> */
+    cv_string s    /* a.k.a. std::vector<string> */
+            = {
+#       ifndef __cplusplus
+        0
+#       endif
+    };
+    /* Note that initialization is not necessary when cv_string_create(...) is used.
+       The 5 lines above are there just to allow compilation in C++ mode
+       where we must prevent code from calling a non-existent cv_string::cv_string()
+    */
     size_t i,position;int match=0;
 
     printf("\nSORTED STRINGVECTOR TEST:\n");
@@ -302,7 +329,17 @@ static void big_t_cpy(big_t* a,const big_t* b)    {
 #endif /* C_VECTOR_big_t_H */
 
 static void ComplexTest(void) {
-    cv_big_t v; /* a.k.a. std::vector<big_t> */
+    cv_big_t v /* a.k.a. std::vector<big_t> */
+            = {
+#       ifndef __cplusplus
+        0
+#       endif
+    };
+    /* Note that initialization is not necessary when cv_string_create(...) is used.
+       The 5 lines above are there just to allow compilation in C++ mode
+       where we must prevent code from calling a non-existent cv_string::cv_string()
+    */
+
     big_t tmp = /* a tmp item */
     #   ifndef __cplusplus
         {0}; /* even if in plain C initialization is not necessary in this case */

@@ -50,15 +50,20 @@ freely, subject to the following restrictions:
 #endif
 
 #ifndef CV_VERSION
-#define CV_VERSION               "1.02"
-#define CV_VERSION_NUM           0102
+#define CV_VERSION               "1.03"
+#define CV_VERSION_NUM           0103
 #endif
 
 /* TODO:
      -> reconsider and reimplement 'clearing memory' before item ctrs
-     -> see if reserve should not grow capacity (and we should move growing to resize)
+     -> see if 'reserve' should not grow capacity (and we should move growing to 'resize'):
+        [From the C++ reference: reserve][Increase the capacity of the vector to a value that's 'greater or equal' to 'new_cap'. If 'new_cap' is greater than the current capacity(), new storage is allocated, otherwise the method does nothing.]
+        So it seems it's O.K. to grow capacity inside 'reserve' (although most implementations do that inside 'resize']
 */
 /* HISTORY:
+   CV_VERSION_NUM 0103:
+   -> renamed 'cv_xxx_trim(...)' to 'cv_xxx_shrink_to_fit(...)'
+
    CV_VERSION_NUM 0102:
    -> fixed 'cv_xxx_swap(...)'
    -> added a 'cv_xxx_dbg_check(...)'
@@ -162,7 +167,7 @@ struct CV_VECTOR_TYPE {
 #   ifndef CV_DISABLE_FAKE_MEMBER_FUNCTIONS  /* must be defined glabally (in the Project Options)) */
     void (* const free)(CV_VECTOR_TYPE* v);
     void (* const clear)(CV_VECTOR_TYPE* v);
-    void (* const trim)(CV_VECTOR_TYPE* v);
+    void (* const shrink_to_fit)(CV_VECTOR_TYPE* v);
     void (* const swap)(CV_VECTOR_TYPE* a,CV_VECTOR_TYPE* b);
     void (* const reserve)(CV_VECTOR_TYPE* v,size_t size);
     void (* const resize)(CV_VECTOR_TYPE* v,size_t size);
@@ -448,9 +453,13 @@ CV_API void CV_VECTOR_TYPE_FCT(_cpy)(CV_VECTOR_TYPE* a,const CV_VECTOR_TYPE* b) 
     if (!a->item_cpy)   {memcpy(&a->v[0],&b->v[0],a->size*sizeof(CV_TYPE));}
     else    {for (i=0;i<a->size;i++) a->item_cpy(&a->v[i],&b->v[i]);}
 }
-CV_API void CV_VECTOR_TYPE_FCT(_trim)(CV_VECTOR_TYPE* v)	{
+CV_API void CV_VECTOR_TYPE_FCT(_shrink_to_fit)(CV_VECTOR_TYPE* v)	{
     if (v)	{
-        CV_VECTOR_TYPE o = {0};
+        CV_VECTOR_TYPE o={
+#       ifndef __cplusplus
+        0
+#       endif
+        };
         CV_VECTOR_TYPE_FCT(_cpy)(&o,v); /* now 'o' is 'v' trimmed */
         CV_VECTOR_TYPE_FCT(_free)(v);
         CV_VECTOR_TYPE_FCT(_swap)(&o,v);
@@ -499,7 +508,7 @@ CV_API void CV_VECTOR_TYPE_FCT(_create_with)(CV_VECTOR_TYPE* v,int (*item_cmp)(c
     typedef void (*item_cpy_type)(CV_TYPE*,const CV_TYPE*);
     typedef int (*item_cmp_type)(const CV_CMP_TYPE*,const CV_CMP_TYPE*);
 #   ifndef CV_DISABLE_FAKE_MEMBER_FUNCTIONS  /* must be defined glabally (in the Project Options)) */
-    typedef void (* free_clear_trim_pop_back_mf)(CV_VECTOR_TYPE*);
+    typedef void (* free_clear_shrink_to_fit_pop_back_mf)(CV_VECTOR_TYPE*);
     typedef void (* swap_mf)(CV_VECTOR_TYPE*,CV_VECTOR_TYPE*);
     typedef void (* reserve_mf)(CV_VECTOR_TYPE*,size_t);
     typedef void (* resize_mf)(CV_VECTOR_TYPE*,size_t);
@@ -524,9 +533,9 @@ CV_API void CV_VECTOR_TYPE_FCT(_create_with)(CV_VECTOR_TYPE* v,int (*item_cmp)(c
     *((item_cpy_type*)&v->item_cpy)=item_cpy;
     *((item_cmp_type*)&v->item_cmp)=item_cmp;
 #   ifndef CV_DISABLE_FAKE_MEMBER_FUNCTIONS  /* must be defined glabally (in the Project Options)) */
-    *((free_clear_trim_pop_back_mf*)&v->free)=&CV_VECTOR_TYPE_FCT(_free);
-    *((free_clear_trim_pop_back_mf*)&v->clear)=&CV_VECTOR_TYPE_FCT(_clear);
-    *((free_clear_trim_pop_back_mf*)&v->trim)=&CV_VECTOR_TYPE_FCT(_trim);
+    *((free_clear_shrink_to_fit_pop_back_mf*)&v->free)=&CV_VECTOR_TYPE_FCT(_free);
+    *((free_clear_shrink_to_fit_pop_back_mf*)&v->clear)=&CV_VECTOR_TYPE_FCT(_clear);
+    *((free_clear_shrink_to_fit_pop_back_mf*)&v->shrink_to_fit)=&CV_VECTOR_TYPE_FCT(_shrink_to_fit);
     *((swap_mf*)&v->swap)=&CV_VECTOR_TYPE_FCT(_swap);
     *((reserve_mf*)&v->reserve)=&CV_VECTOR_TYPE_FCT(_reserve);
     *((resize_mf*)&v->resize)=&CV_VECTOR_TYPE_FCT(_resize);
@@ -534,7 +543,7 @@ CV_API void CV_VECTOR_TYPE_FCT(_create_with)(CV_VECTOR_TYPE* v,int (*item_cmp)(c
     *((resize_with_by_val_mf*)&v->resize_with_by_val)=&CV_VECTOR_TYPE_FCT(_resize_with_by_val);
     *((push_back_mf*)&v->push_back)=&CV_VECTOR_TYPE_FCT(_push_back);
     *((push_back_by_val_mf*)&v->push_back_by_val)=&CV_VECTOR_TYPE_FCT(_push_back_by_val);
-    *((free_clear_trim_pop_back_mf*)&v->pop_back)=&CV_VECTOR_TYPE_FCT(_pop_back);
+    *((free_clear_shrink_to_fit_pop_back_mf*)&v->pop_back)=&CV_VECTOR_TYPE_FCT(_pop_back);
     *((search_mf*)&v->linear_search)=&CV_VECTOR_TYPE_FCT(_linear_search);
     *((search_by_val_mf*)&v->linear_search_by_val)=&CV_VECTOR_TYPE_FCT(_linear_search_by_val);
     *((search_mf*)&v->binary_search)=&CV_VECTOR_TYPE_FCT(_binary_search);
