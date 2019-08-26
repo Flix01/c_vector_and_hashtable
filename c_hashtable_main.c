@@ -285,7 +285,15 @@ static __inline void string_setter(string* a,const char* b)    {
 }
 static void string_cpy(string* a,const string* b)    {string_setter(a,*b);}
 static __inline ch_hash_uint string_hash(const string* k) {
-    return (((*k) ? strlen(*k) : 0)
+/*#   define TEST_MURMUR_3_HASH */  /* ...we should test this with a lot of strings... */
+    return (((*k) ?
+#   ifdef TEST_MURMUR_3_HASH
+                 /* well, ch_hash_murmur3(...) returns a 32-bit unsigned int. Hope it works... */
+                 (ch_hash_uint) ch_hash_murmur3((const unsigned char*) (*k),strlen(*k),7)  /* ...but its calculation is much slower */
+#   else
+                 strlen(*k)     /* naive hash but calculation is much faster */
+#   endif
+               : 0)
 #   if CH_NUM_BUCKETS_string_string!=CH_MAX_NUM_BUCKETS /* otherwise mod is unnecessary */
     %CH_NUM_BUCKETS_string_string /* CH_MAX_NUM_BUCKETS can be 256 or 65536, but must be set globally (i.e. in Project Options) */
 #   endif

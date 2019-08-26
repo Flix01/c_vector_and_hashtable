@@ -36,8 +36,9 @@ freely, subject to the following restrictions:
    GLOBAL DEFINITIONS: The following definitions (when used) must be set
    globally (= in the Project Options or in a StdAfx.h file):
 
-   CH_MAX_NUM_BUCKETS                       256 or 65536
-   CH_DISABLE_FAKE_MEMBER_FUNCTIONS
+   CH_MAX_NUM_BUCKETS                   // must be 256, 65536 or 2147483648
+   CH_DISABLE_FAKE_MEMBER_FUNCTIONS     // faster with this defined
+   CH_DISABLE_CLEARING_ITEM_MEMORY      // faster with this defined
    CH_MALLOC
    CH_REALLOC
    CH_FREE
@@ -60,16 +61,22 @@ freely, subject to the following restrictions:
 #define CH_VERSION_NUM           0103
 #endif
 
-/* TODO:
-     -> reconsider and reimplement 'clearing memory' before item ctrs
-     -> see if 'reserve' should not grow capacity (and we should move growing to 'resize'):
-        [From the C++ reference: reserve][Increase the capacity of the vector to a value that's 'greater or equal' to 'new_cap'. If 'new_cap' is greater than the current capacity(), new storage is allocated, otherwise the method does nothing.]
-        So it seems it's O.K. to grow capacity inside 'reserve' (although most implementations do that inside 'resize']
-*/
+
 /* HISTORY:
    CH_VERSION_NUM 0103:
    -> fixed 'ch_xxx_swap(...)'.
-   -> added ''ch_xxx_shrink_to_fit(...)'
+   -> added 'ch_xxx_shrink_to_fit(...)'
+   -> CH_MAX_NUM_BUCKETS now can be set as big as 2147483648 (max 32-bit unsigned int plus one)
+   -> added 'ch_hash_murmur3(...)' (for little-endian CPUs only). From https://en.wikipedia.org/wiki/MurmurHash
+   -> in (nested) struct chv_xxx (the 'bucket' type):
+       -> now the first call to 'reserve(&v,new_cap)' (with 'new_cap'>1 to exclude fist indirect call by 'push_back(...)')
+          should set the vector capacity exactly to 'new_cap'. This includes the first call to 'resize(&v,new_size)', with 'new_size'>1
+          This was done to mitigate a bit the difference between our 'reserve' implementation and others, even if our code is perfectly legal
+          [From the C++ reference: reserve][Increase the capacity of the vector to a value that's 'greater or equal' to 'new_cap'. If 'new_cap' is greater than the current capacity(), new storage is allocated, otherwise the method does nothing.]
+          So it seems it's O.K. to grow capacity inside 'reserve' (although most implementations do that inside 'resize']
+       -> revisited the 'clear item memory before item_ctr()' (where 'item' is our 'key_value pair') concept a bit,
+          and added the optional definition CH_DISABLE_CLEARING_ITEM_MEMORY
+
 
    CH_VERSION_NUM 0102:
    -> added used memory info to 'ch_xxx_dbg_check(...)'.
@@ -159,9 +166,11 @@ extern "C"	{
 #define CH_KEY_TYPE_FCT(name) CH_CAT(CH_KEY_TYPE,name)
 #define CH_VALUE_TYPE_FCT(name) CH_CAT(CH_VALUE_TYPE,name)
 
-#ifndef CH_MAX_NUM_BUCKETS  /* This MUST be 256 or 65536 and can be set only in the project options (not at each header inclusion) */
+#ifndef CH_MAX_NUM_BUCKETS  /* This MUST be 256, 65536 or 2147483648 and can be set only in the project options (not at each header inclusion) */
 #   define CH_MAX_NUM_BUCKETS 256
 #endif
+
+
 
 #ifndef CH_HASH_TYPE_DEFINED    /* internal usage */
 #   define CH_HASH_TYPE_DEFINED
@@ -175,8 +184,12 @@ extern "C"	{
 #       undef CH_MAX_NUM_BUCKETS
 #       define CH_MAX_NUM_BUCKETS 65536
         typedef unsigned short ch_hash_uint;
+#   elif CH_MAX_NUM_BUCKETS<=2147483648
+#       undef CH_MAX_NUM_BUCKETS
+#       define CH_MAX_NUM_BUCKETS 2147483648
+        typedef unsigned int ch_hash_uint;
 #   else
-#       error CH_MAX_NUM_BUCKETS cannot be bigger than 65536.
+#       error CH_MAX_NUM_BUCKETS cannot be bigger than 2147483648.
 #   endif
 #endif
 
@@ -189,8 +202,10 @@ extern "C"	{
 #elif CH_NUM_BUCKETS>CH_MAX_NUM_BUCKETS
 #   if CH_NUM_BUCKETS<=65536
 #       error CH_MAX_NUM_BUCKETS must be set to 65536 globally in the Project Options to allow CH_NUM_BUCKETS>256.
+#   elif CH_NUM_BUCKETS<=2147483648
+#       error CH_MAX_NUM_BUCKETS must be set to 2147483648 globally in the Project Options to allow CH_NUM_BUCKETS>65536.
 #   else
-#       error CH_NUM_BUCKETS cannot be bigger than 65536.
+#       error CH_NUM_BUCKETS cannot be bigger than 2147483648.
 #   endif
 #endif
 
@@ -300,6 +315,45 @@ CH_API void ch_display_bytes(size_t bytes_in)   {
     }
 }
 #   endif
+/* from https://en.wikipedia.org/wiki/MurmurHash
+   Warning: it returns unsigned int and works for little-endian CPUs only
+*/
+CH_API unsigned ch_hash_murmur3(const unsigned char* key, size_t len, unsigned seed)    {
+    unsigned h = seed;
+    if (len > 3) {
+        size_t i = len >> 2;
+        do {
+            unsigned k;
+            memcpy(&k, key, sizeof(unsigned));
+            key += sizeof(unsigned);
+            k *= 0xcc9e2d51;
+            k = (k << 15) | (k >> 17);
+            k *= 0x1b873593;
+            h ^= k;
+            h = (h << 13) | (h >> 19);
+            h = h * 5 + 0xe6546b64;
+        } while (--i);
+    }
+    if (len & 3) {
+        size_t i = len & 3;
+        unsigned k = 0;
+        do {
+            k <<= 8;
+            k |= key[i - 1];
+        } while (--i);
+        k *= 0xcc9e2d51;
+        k = (k << 15) | (k >> 17);
+        k *= 0x1b873593;
+        h ^= k;
+    }
+    h ^= len;
+    h ^= h >> 16;
+    h *= 0x85ebca6b;
+    h ^= h >> 13;
+    h *= 0xc2b2ae35;
+    h ^= h >> 16;
+    return h;
+}
 #endif /* CH_PRIV_FUNCTIONS */
 
 
@@ -323,10 +377,10 @@ CH_API void CH_VECTOR_TYPE_FCT(_reserve)(CH_VECTOR_TYPE* v,size_t size,const CH_
     CH_ASSERT(v && ht);
     /* grows-only! */
     if (size>v->capacity) {
-        const size_t new_capacity = v->capacity+(size-v->capacity)+(v->capacity)/2;
+        const size_t new_capacity = (v->capacity==0 && size>1) ?
+                    size :      /* possibly keep initial user-guided 'reserve(...)' */
+                    (v->capacity+(size-v->capacity)+(v->capacity)/2);   /* our growing strategy */
         ch_safe_realloc((void** const) &v->v,new_capacity*sizeof(CH_HASHTABLE_ITEM_TYPE));
-        /* we reset to 0 the additional capacity (this helps robustness) */
-        memset(&v->v[v->capacity],0,(new_capacity-v->capacity)*sizeof(CH_HASHTABLE_ITEM_TYPE));
         *((size_t*) &v->capacity) = new_capacity;
     }
 }
@@ -342,6 +396,9 @@ CH_API void CH_VECTOR_TYPE_FCT(_resize)(CH_VECTOR_TYPE* v,size_t size,const CH_H
     }
     else {
         size_t i;
+#       ifndef CH_DISABLE_CLEARING_ITEM_MEMORY
+        if (ht->key_ctr || ht->key_cpy || ht->value_ctr || ht->value_cpy) memset(&v->v[v->size],0,(size-v->size)*sizeof(CH_HASHTABLE_ITEM_TYPE));
+#       endif
         if (ht->key_ctr && ht->value_ctr)   {for (i=v->size;i<size;i++) {ht->key_ctr(&v->v[i].k);ht->value_ctr(&v->v[i].v);}}
         if (ht->key_ctr)        {for (i=v->size;i<size;i++) ht->key_ctr(&v->v[i].k);}
         else if (ht->value_ctr) {for (i=v->size;i<size;i++) ht->value_ctr(&v->v[i].v);}
@@ -412,7 +469,9 @@ CH_API size_t CH_VECTOR_TYPE_FCT(_insert_at)(CH_VECTOR_TYPE* v,const CH_HASHTABL
     CH_ASSERT(v && ht && item_to_insert && position<=v->size);
     CH_VECTOR_TYPE_FCT(_reserve)(v,v->size+1,ht);
     if (position<v->size) memmove(&v->v[position+1],&v->v[position],(v->size-position)*sizeof(CH_HASHTABLE_ITEM_TYPE));
-    memset(&v->v[position],0,sizeof(CH_HASHTABLE_ITEM_TYPE));
+#   ifndef CH_DISABLE_CLEARING_ITEM_MEMORY
+    if (ht->key_ctr || ht->key_cpy || ht->value_ctr || ht->value_cpy) memset(&v->v[position],0,sizeof(CH_HASHTABLE_ITEM_TYPE));
+#   endif
     if (ht->key_ctr)    ht->key_ctr(&v->v[position].k);
     if (ht->value_ctr)  ht->value_ctr(&v->v[position].v);
 
@@ -435,7 +494,9 @@ CH_API size_t CH_VECTOR_TYPE_FCT(_insert_key_at)(CH_VECTOR_TYPE* v,const CH_KEY_
     CH_ASSERT(v && ht && key_to_insert && position<=v->size);
     CH_VECTOR_TYPE_FCT(_reserve)(v,v->size+1,ht);
     if (position<v->size) memmove(&v->v[position+1],&v->v[position],(v->size-position)*sizeof(CH_HASHTABLE_ITEM_TYPE));
-    memset(&v->v[position],0,sizeof(CH_HASHTABLE_ITEM_TYPE));
+#   ifndef CH_DISABLE_CLEARING_ITEM_MEMORY
+    if (ht->key_ctr || ht->key_cpy || ht->value_ctr || ht->value_cpy) memset(&v->v[position],0,sizeof(CH_HASHTABLE_ITEM_TYPE));
+#   endif
     if (ht->key_ctr)    ht->key_ctr(&v->v[position].k);
     if (ht->value_ctr)  ht->value_ctr(&v->v[position].v);
     if (!ht->key_cpy)   memcpy(&v->v[position].k,key_to_insert,sizeof(CH_KEY_TYPE));
@@ -519,6 +580,9 @@ CH_API CH_VALUE_TYPE* CH_HASHTABLE_TYPE_FCT(_get_or_insert)(CH_HASHTABLE_TYPE* h
 #   if 0
     {
         CH_HASHTABLE_ITEM_TYPE item;
+#       ifndef CH_DISABLE_CLEARING_ITEM_MEMORY
+        if (ht->key_ctr || ht->key_cpy || ht->value_ctr || ht->value_cpy) memset(&item,0,sizeof(CH_HASHTABLE_ITEM_TYPE));
+#       endif
         if (ht->key_ctr) ht->key_ctr(&item.k);
         if (ht->value_ctr) ht->value_ctr(&item.v);        
         if (ht->key_cpy) ht->key_cpy(&item.k,key);

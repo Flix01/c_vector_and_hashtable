@@ -34,7 +34,8 @@ freely, subject to the following restrictions:
    GLOBAL DEFINITIONS: The following definitions (when used) must be set
    globally (= in the Project Options or in a StdAfx.h file):
 
-   CV_DISABLE_FAKE_MEMBER_FUNCTIONS
+   CV_DISABLE_FAKE_MEMBER_FUNCTIONS     // faster with this defined
+   CV_DISABLE_CLEARING_ITEM_MEMORY      // faster with this defined
    CV_MALLOC
    CV_REALLOC
    CV_FREE
@@ -54,15 +55,16 @@ freely, subject to the following restrictions:
 #define CV_VERSION_NUM           0103
 #endif
 
-/* TODO:
-     -> reconsider and reimplement 'clearing memory' before item ctrs
-     -> see if 'reserve' should not grow capacity (and we should move growing to 'resize'):
-        [From the C++ reference: reserve][Increase the capacity of the vector to a value that's 'greater or equal' to 'new_cap'. If 'new_cap' is greater than the current capacity(), new storage is allocated, otherwise the method does nothing.]
-        So it seems it's O.K. to grow capacity inside 'reserve' (although most implementations do that inside 'resize']
-*/
+
 /* HISTORY:
    CV_VERSION_NUM 0103:
    -> renamed 'cv_xxx_trim(...)' to 'cv_xxx_shrink_to_fit(...)'
+   -> now the first call to 'reserve(&v,new_cap)' (with 'new_cap'>1 to exclude fist indirect call by 'push_back(...)')
+      should set the vector capacity exactly to 'new_cap'. This includes the first call to 'resize(&v,new_size)', with 'new_size'>1
+      This was done to mitigate a bit the difference between our 'reserve' implementation and others, even if our code is perfectly legal
+      [From the C++ reference: reserve][Increase the capacity of the vector to a value that's 'greater or equal' to 'new_cap'. If 'new_cap' is greater than the current capacity(), new storage is allocated, otherwise the method does nothing.]
+      So it seems it's O.K. to grow capacity inside 'reserve' (although most implementations do that inside 'resize']
+   -> revisited the 'clear item memory before item_ctr()' concept a bit, and added the optional definition CV_DISABLE_CLEARING_ITEM_MEMORY
 
    CV_VERSION_NUM 0102:
    -> fixed 'cv_xxx_swap(...)'
@@ -290,10 +292,10 @@ CV_API void CV_VECTOR_TYPE_FCT(_reserve)(CV_VECTOR_TYPE* v,size_t size)	{
 	CV_ASSERT(v);    
 	/* grows-only! */
     if (size>v->capacity) {		
-        const size_t new_capacity = v->capacity+(size-v->capacity)+(v->capacity)/2;
+        const size_t new_capacity = (v->capacity==0 && size>1) ?
+                    size :      /* possibly keep initial user-guided 'reserve(...)' */
+                    (v->capacity+(size-v->capacity)+(v->capacity)/2);   /* our growing strategy */
         cv_safe_realloc((void** const) &v->v,new_capacity*sizeof(CV_TYPE));
-        /* we reset to 0 the additional capacity (this helps robustness) */
-        memset(&v->v[v->capacity],0,(new_capacity-v->capacity)*sizeof(CV_TYPE));
         *((size_t*) &v->capacity) = new_capacity;
 	}
 }
@@ -302,7 +304,12 @@ CV_API void CV_VECTOR_TYPE_FCT(_resize)(CV_VECTOR_TYPE* v,size_t size)	{
 	CV_ASSERT(v);  
     if (size>v->capacity) CV_VECTOR_TYPE_FCT(_reserve)(v,size);
     if (size<v->size)   {if (v->item_dtr) {size_t i;for (i=size;i<v->size;i++) v->item_dtr(&v->v[i]);}}
-    else {if (v->item_ctr) {size_t i;for (i=v->size;i<size;i++) v->item_ctr(&v->v[i]);}}
+    else {
+#       ifndef CV_DISABLE_CLEARING_ITEM_MEMORY
+        if (v->item_ctr || v->item_cpy) memset(&v->v[v->size],0,(size-v->size)*sizeof(CV_TYPE));
+#       endif
+        if (v->item_ctr) {size_t i;for (i=v->size;i<size;i++) v->item_ctr(&v->v[i]);}
+    }
     *((size_t*) &v->size)=size;
 }
 CV_API void CV_VECTOR_TYPE_FCT(_resize_with)(CV_VECTOR_TYPE* v,size_t size,const CV_TYPE* default_value)	{
@@ -314,7 +321,12 @@ CV_API void CV_VECTOR_TYPE_FCT(_resize_with)(CV_VECTOR_TYPE* v,size_t size,const
     else {
         size_t i;
         void (* const item_cpy)(CV_TYPE*,const CV_TYPE*) = v->item_cpy ? v->item_cpy : &(CV_TYPE_FCT(_default_item_cpy));
-        if (v->item_ctr)    {for (i=v->size;i<size;i++) {v->item_ctr(&v->v[i]);item_cpy(&v->v[i],default_value);}}
+#       ifndef CV_DISABLE_CLEARING_ITEM_MEMORY
+        if (v->item_ctr || v->item_cpy) memset(&v->v[v->size],0,(size-v->size)*sizeof(CV_TYPE));
+#       endif
+        if (v->item_ctr)    {
+            for (i=v->size;i<size;i++) {v->item_ctr(&v->v[i]);item_cpy(&v->v[i],default_value);}
+        }
         else    {for (i=v->size;i<size;i++) {item_cpy(&v->v[i],default_value);}}
     }
     *((size_t*) &v->size)=size;
@@ -335,17 +347,26 @@ CV_API void CV_VECTOR_TYPE_FCT(_push_back)(CV_VECTOR_TYPE* v,const CV_TYPE* valu
 #           endif
             item_cpy(&v_val,value);
             CV_VECTOR_TYPE_FCT(_reserve)(v,v->size+1);
+#           ifndef CV_DISABLE_CLEARING_ITEM_MEMORY
+            if (v->item_ctr || v->item_cpy) memset(&v->v[v->size],0,sizeof(CV_TYPE));
+#           endif
             if (v->item_ctr) v->item_ctr(&v->v[v->size]);
             item_cpy(&v->v[v->size],&v_val);
         }
         else {
             CV_VECTOR_TYPE_FCT(_reserve)(v,v->size+1);
+#           ifndef CV_DISABLE_CLEARING_ITEM_MEMORY
+            if (v->item_ctr || v->item_cpy) memset(&v->v[v->size],0,sizeof(CV_TYPE));
+#           endif
             if (v->item_ctr) v->item_ctr(&v->v[v->size]);
             item_cpy(&v->v[v->size],value);
     	}
     }
     else {
-	    if (v->item_ctr) v->item_ctr(&v->v[v->size]);
+#       ifndef CV_DISABLE_CLEARING_ITEM_MEMORY
+        if (v->item_ctr || v->item_cpy) memset(&v->v[v->size],0,sizeof(CV_TYPE));
+#       endif
+        if (v->item_ctr) v->item_ctr(&v->v[v->size]);
         item_cpy(&v->v[v->size],value);
 	}
 	*((size_t*) &v->size)=v->size+1;
@@ -400,7 +421,9 @@ CV_API size_t CV_VECTOR_TYPE_FCT(_insert_at)(CV_VECTOR_TYPE* v,const CV_TYPE* it
     CV_ASSERT(v && position<=v->size);
     CV_VECTOR_TYPE_FCT(_reserve)(v,v->size+1);    
     if (position<v->size) memmove(&v->v[position+1],&v->v[position],(v->size-position)*sizeof(CV_TYPE));
-    memset(&v->v[position],0,sizeof(CV_TYPE));
+#   ifndef CV_DISABLE_CLEARING_ITEM_MEMORY
+    if (v->item_ctr || v->item_cpy) memset(&v->v[position],0,sizeof(CV_TYPE));
+#   endif
     if (v->item_ctr) v->item_ctr(&v->v[position]);
     if (!v->item_cpy)   memcpy(&v->v[position],item_to_insert,sizeof(CV_TYPE));
     else    v->item_cpy(&v->v[position],item_to_insert);
