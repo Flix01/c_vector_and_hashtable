@@ -36,7 +36,7 @@ freely, subject to the following restrictions:
    GLOBAL DEFINITIONS: The following definitions (when used) must be set
    globally (= in the Project Options or in a StdAfx.h file):
 
-   CH_MAX_NUM_BUCKETS                   // must be 256, 65536 or 2147483648
+   CH_MAX_NUM_BUCKETS                   // must be 256, 65536 or 2147483648 and defines ch_hash_uint as unsigned char, unsigned short or unsigned int
    CH_DISABLE_FAKE_MEMBER_FUNCTIONS     // faster with this defined
    CH_DISABLE_CLEARING_ITEM_MEMORY      // faster with this defined
    CH_MALLOC

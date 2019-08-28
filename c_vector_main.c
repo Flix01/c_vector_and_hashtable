@@ -68,6 +68,7 @@ v[0]={	20.000,	{[2:]	(10,3,3),(20,3,3)}}
 */
 #include <stdio.h>  /* printf */
 
+#include "c_vector.h"
 
 /*#define NO_SIMPLE_TEST*/
 /*#define NO_STRINGVECTOR_TEST*/
@@ -90,12 +91,10 @@ static int mystruct_cmp(const mystruct* a,const mystruct* b) {
 	else if (a->c<b->c) return -1;
 	return 0;
 }
-/* MANDATORY: for EACH struct we'll use in a vector, write something like 
- (please replace all occurrences of 'mystruct' with your struct name): */
-#ifndef C_VECTOR_mystruct_H 
+
+#ifndef C_VECTOR_mystruct_H     /* I think it's safer to add these guards */
 #define C_VECTOR_mystruct_H
-#define CV_TYPE mystruct
-#include "c_vector.h"	/* this header has no header guards inside! */
+CV_DECLARATION_AND_DEFINITION(mystruct) /* here we declare and define cv_mystruct (a.k.a. std::vector<mystruct>) */
 #endif /* C_VECTOR_mystruct_H */
 /* What the lines above do, is to create the type-safe vector structure:
 typedef struct {
@@ -224,11 +223,16 @@ static void string_cpy(string* a,const string* b)    {
         memcpy(*a,*b,blen+1);
     }
 }
-#ifndef C_VECTOR_string_H
-#define C_VECTOR_string_H
-#define CV_TYPE string
-#include "c_vector.h"	/* this header has no header guards inside! */
-#endif /* C_VECTOR_string_H */
+
+/* Here we show that we can split the above macro in: */
+#ifndef C_VECTOR_string_decl_H
+#define C_VECTOR_string_decl_H
+CV_DECLARATION(string)              /* this is handy when used in header files */
+#endif /* C_VECTOR_string_decl_H */
+#ifndef C_VECTOR_string_def_H
+#define C_VECTOR_string_def_H
+CV_DEFINITION(string)               /* this can probably be defined once in a single source file... (but it needs declaration too) (untested) */
+#endif /* C_VECTOR_string_def_H */
 
 static void StringVectorTest(void) {
     cv_string s    /* a.k.a. std::vector<string> */
@@ -321,11 +325,10 @@ static void big_t_cpy(big_t* a,const big_t* b)    {
     a->a=b->a;
     cv_mystruct_cpy(&a->v,&b->v);   /* 'cv_mystruct_cpy(...)' has been created by <c_vector.h> for mystruct */
 }
-/* same inclusion as above, but now for 'big_t' */
+/* same macro as above, but now for 'big_t' */
 #ifndef C_VECTOR_big_t_H
 #define C_VECTOR_big_t_H
-#define CV_TYPE big_t
-#include "c_vector.h"	/* this header has no header guards inside! */
+CV_DECLARATION_AND_DEFINITION(big_t)
 #endif /* C_VECTOR_big_t_H */
 
 static void ComplexTest(void) {
