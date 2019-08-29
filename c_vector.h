@@ -46,13 +46,27 @@ freely, subject to the following restrictions:
 #define C_VECTOR_H_
 
 #ifndef CV_VERSION
-#define CV_VERSION               "1.04"
-#define CV_VERSION_NUM           0104
+#define CV_VERSION               "1.05"
+#define CV_VERSION_NUM           0105
 #endif
 
-/* TODO: add functions to insert/remove range of items */
+/*  TODO: restore syntax in version 1.03, without macros and with multiple inclusions:
+    It's simply the way of doing it.
+    At the present state breakpoints don't work and even asserts just stop the program without
+    any useful hint. In short: it's much better header re-inclusion than using macros.
+    Version 1.04 experiment: FAILED.
+*/
+
 
 /* HISTORY:
+   CV_VERSION_NUM 0105:
+   -> renamed 'CV_DECLARATION(...)' to 'CV_DECLARE(...)'
+   -> renamed 'CV_DEFINITION(...)' to 'CV_DEFINE(...)'
+   -> renamed 'CV_DECLARATION_AND_DEFINITION(...)' to 'CV_DECLARE_AND_DEFINE(...)'
+   -> some fixes (that's what I hope) in 'push_back(...)' and 'insert_at(...)' when re-inserting
+      existing items in the same vector.
+   -> added 'cv_xxx_insert_range_at(...)' and 'cv_xxx_remove_range_at(...)'
+
    CV_VERSION_NUM 0104: regression version [= last version had more features]
    -> after having seen the vector implementation at https://gist.github.com/zrbecker/3087880,
       I've wrapped (most of) the code into three macros:
@@ -64,7 +78,7 @@ freely, subject to the following restrictions:
    -> it's not possible to use CV_DISABLE_FAKE_MEMBER_FUNCTIONS anymore
    -> CV_DISABLE_CLEARING_ITEM_MEMORY and CV_USE_VOID_PTRS_IN_CMP_FCT now are global definitions
    -> performance was faster before
-   -> now most of this code is a huge macro, more difficult to mantain
+   -> now most of this code is a huge macro, MUCH more difficult to mantain (and breakpoints stop working in my IDE)
    -> now it's more possible that in some IDEs code completion stops working (and this makes a very big difference indeed!)
    -> UNTESTED CONFIGURATIONS: I've never tried to set a CV_DECLARATION(CV_TYPE) somewhere (e.g. in a .h file), and to set a CV_DEFINITION(CV_TYPE) once in a .c file, and see if this works or not.
 
@@ -257,7 +271,7 @@ CV_EXTERN_C_END
 #   define CV_CMP_FCT_TYPE(CV_TYPE) CV_TYPE
 #endif
 
-#define CV_DECLARATION(CV_TYPE)										\
+#define CV_DECLARE(CV_TYPE)										\
 																	\
 CV_EXTERN_C_START													\
                                                                     \
@@ -288,9 +302,11 @@ struct CV_VECTOR_TYPE(CV_TYPE) {												\
     size_t (* const binary_search_by_val)(const CV_VECTOR_TYPE(CV_TYPE)* v,const CV_TYPE item_to_search,int* match);		\
     size_t (* const insert_at)(CV_VECTOR_TYPE(CV_TYPE)* v,const CV_TYPE* item_to_insert,size_t position);				\
     size_t (* const insert_at_by_val)(CV_VECTOR_TYPE(CV_TYPE)* v,const CV_TYPE item_to_insert,size_t position);			\
+    size_t (* const insert_range_at)(CV_VECTOR_TYPE(CV_TYPE)* v,const CV_TYPE* items_to_insert,size_t num_items_to_insert,size_t start_position);       \
     size_t (* const insert_sorted)(CV_VECTOR_TYPE(CV_TYPE)* v,const CV_TYPE* item_to_insert,int* match,int insert_even_if_item_match);		\
     size_t (* const insert_sorted_by_val)(CV_VECTOR_TYPE(CV_TYPE)* v,const CV_TYPE item_to_insert,int* match,int insert_even_if_item_match);	\
     int (* const remove_at)(CV_VECTOR_TYPE(CV_TYPE)* v,size_t position);		\
+    int (* const remove_range_at)(CV_VECTOR_TYPE(CV_TYPE)* v,size_t start_item_position,size_t num_items_to_remove);     \
     void (* const cpy)(CV_VECTOR_TYPE(CV_TYPE)* a,const CV_VECTOR_TYPE(CV_TYPE)* b);	\
     void (* const dbg_check)(const CV_VECTOR_TYPE(CV_TYPE)* v);				\
 };																	\
@@ -311,9 +327,11 @@ CV_API_DEC size_t CV_VECTOR_TYPE_FCT(CV_TYPE,_binary_search)(const CV_VECTOR_TYP
 CV_API_DEC size_t CV_VECTOR_TYPE_FCT(CV_TYPE,_binary_search_by_val)(const CV_VECTOR_TYPE(CV_TYPE)* v,const CV_TYPE item_to_search,int* match);  \
 CV_API_DEC size_t CV_VECTOR_TYPE_FCT(CV_TYPE,_insert_at)(CV_VECTOR_TYPE(CV_TYPE)* v,const CV_TYPE* item_to_insert,size_t position);     \
 CV_API_DEC size_t CV_VECTOR_TYPE_FCT(CV_TYPE,_insert_at_by_val)(CV_VECTOR_TYPE(CV_TYPE)* v,const CV_TYPE item_to_insert,size_t position);       \
+CV_API_DEC size_t CV_VECTOR_TYPE_FCT(CV_TYPE,_insert_range_at)(CV_VECTOR_TYPE(CV_TYPE)* v,const CV_TYPE* items_to_insert,size_t num_items_to_insert,size_t start_position);     \
 CV_API_DEC size_t CV_VECTOR_TYPE_FCT(CV_TYPE,_insert_sorted)(CV_VECTOR_TYPE(CV_TYPE)* v,const CV_TYPE* item_to_insert,int* match,int insert_even_if_item_match);        \
 CV_API_DEC size_t CV_VECTOR_TYPE_FCT(CV_TYPE,_insert_sorted_by_val)(CV_VECTOR_TYPE(CV_TYPE)* v,const CV_TYPE item_to_insert,int* match,int insert_even_if_item_match);      \
 CV_API_DEC int CV_VECTOR_TYPE_FCT(CV_TYPE,_remove_at)(CV_VECTOR_TYPE(CV_TYPE)* v,size_t position);      \
+CV_API_DEC int CV_VECTOR_TYPE_FCT(CV_TYPE,_remove_range_at)(CV_VECTOR_TYPE(CV_TYPE)* v,size_t start_item_position,size_t num_items_to_remove);                              \
 CV_API_DEC void CV_VECTOR_TYPE_FCT(CV_TYPE,_cpy)(CV_VECTOR_TYPE(CV_TYPE)* a,const CV_VECTOR_TYPE(CV_TYPE)* b);      \
 CV_API_DEC void CV_VECTOR_TYPE_FCT(CV_TYPE,_shrink_to_fit)(CV_VECTOR_TYPE(CV_TYPE)* v);     \
 CV_API_DEC void CV_VECTOR_TYPE_FCT(CV_TYPE,_dbg_check)(const CV_VECTOR_TYPE(CV_TYPE)* v);       \
@@ -324,7 +342,7 @@ CV_EXTERN_C_END														\
 
 
 
-#define CV_DEFINITION(CV_TYPE)										\
+#define CV_DEFINE(CV_TYPE)										\
 																	\
 CV_EXTERN_C_START   												\
 																	\
@@ -404,27 +422,25 @@ CV_API_DEF void CV_VECTOR_TYPE_FCT(CV_TYPE,_push_back)(CV_VECTOR_TYPE(CV_TYPE)* 
 	void (*item_cpy)(CV_TYPE*,const CV_TYPE*);												\
     CV_ASSERT(v);																			\
     item_cpy = v->item_cpy ? v->item_cpy : &(CV_TYPE_FCT(CV_TYPE,_default_item_cpy));				\
-	if (v->size == v->capacity) {			            									\
         if (v->v && value>=v->v && value<(v->v+v->size))  {									\
             CV_TYPE v_val = CV_DEFAULT_STRUCT_INIT;											\
-            item_cpy(&v_val,value);															\
-            CV_VECTOR_TYPE_FCT(CV_TYPE,_reserve)(v,v->size+1);										\
+            /*memcpy(&v_val,value,sizeof(CV_TYPE));*/        														\
+            if (v->item_ctr) v->item_ctr(&v_val);                                                                       \
+            item_cpy(&v_val,value);                                                                            \
+                                                                                                                \
+            if (v->size == v->capacity) {CV_VECTOR_TYPE_FCT(CV_TYPE,_reserve)(v,v->size+1);}										\
             if (v->item_ctr || v->item_cpy) cvp_memset(&v->v[v->size],0,sizeof(CV_TYPE));		\
             if (v->item_ctr) v->item_ctr(&v->v[v->size]);									\
             item_cpy(&v->v[v->size],&v_val);												\
+                                                                                            \
+            if (v->item_dtr) v->item_dtr(&v_val);                                                                        \
         }																					\
         else {																				\
-            CV_VECTOR_TYPE_FCT(CV_TYPE,_reserve)(v,v->size+1);										\
+            if (v->size == v->capacity) {CV_VECTOR_TYPE_FCT(CV_TYPE,_reserve)(v,v->size+1);}										\
             if (v->item_ctr || v->item_cpy) cvp_memset(&v->v[v->size],0,sizeof(CV_TYPE));		\
             if (v->item_ctr) v->item_ctr(&v->v[v->size]);									\
             item_cpy(&v->v[v->size],value);													\
-    	}																					\
-    }																						\
-    else {																					\
-        if (v->item_ctr || v->item_cpy) cvp_memset(&v->v[v->size],0,sizeof(CV_TYPE));			\
-        if (v->item_ctr) v->item_ctr(&v->v[v->size]);										\
-        item_cpy(&v->v[v->size],value);														\
-	}																						\
+        }																					\
 	*((size_t*) &v->size)=v->size+1;														\
 }																							\
 CV_API_DEF void CV_VECTOR_TYPE_FCT(CV_TYPE,_push_back_by_val)(CV_VECTOR_TYPE(CV_TYPE)* v,const CV_TYPE value)  {CV_VECTOR_TYPE_FCT(CV_TYPE,_push_back)(v,&value);}	\
@@ -473,17 +489,83 @@ CV_API_DEF size_t CV_VECTOR_TYPE_FCT(CV_TYPE,_binary_search)(const CV_VECTOR_TYP
 CV_API_DEF size_t CV_VECTOR_TYPE_FCT(CV_TYPE,_binary_search_by_val)(const CV_VECTOR_TYPE(CV_TYPE)* v,const CV_TYPE item_to_search,int* match)    {return CV_VECTOR_TYPE_FCT(CV_TYPE,_binary_search)(v,&item_to_search,match);}	\
 CV_API_DEF size_t CV_VECTOR_TYPE_FCT(CV_TYPE,_insert_at)(CV_VECTOR_TYPE(CV_TYPE)* v,const CV_TYPE* item_to_insert,size_t position)  {		\
     /* position is in [0,v->size] */																					\
+    void (*item_cpy)(CV_TYPE*,const CV_TYPE*);												\
     CV_ASSERT(v && position<=v->size);																					\
-    CV_VECTOR_TYPE_FCT(CV_TYPE,_reserve)(v,v->size+1);    																		\
-    if (position<v->size) memmove(&v->v[position+1],&v->v[position],(v->size-position)*sizeof(CV_TYPE));				\
-    if (v->item_ctr || v->item_cpy) cvp_memset(&v->v[position],0,sizeof(CV_TYPE));											\
-    if (v->item_ctr) v->item_ctr(&v->v[position]);																		\
-    if (!v->item_cpy)   memcpy(&v->v[position],item_to_insert,sizeof(CV_TYPE));											\
-    else    v->item_cpy(&v->v[position],item_to_insert);																\
-	*((size_t*) &v->size)=v->size+1;																					\
+    item_cpy = v->item_cpy ? v->item_cpy : &(CV_TYPE_FCT(CV_TYPE,_default_item_cpy));				\
+    if (v->v && item_to_insert>=v->v && item_to_insert<(v->v+v->size))  {									\
+        CV_TYPE v_val = CV_DEFAULT_STRUCT_INIT;											\
+        /*memcpy(&v_val,item_to_insert,sizeof(CV_TYPE));*/        														\
+        if (v->item_ctr) v->item_ctr(&v_val);                                                                       \
+        item_cpy(&v_val,item_to_insert);                                                                            \
+                                                                                                                    \
+        if (v->size == v->capacity) {CV_VECTOR_TYPE_FCT(CV_TYPE,_reserve)(v,v->size+1);}                            \
+        if (position<v->size) memmove(&v->v[position+1],&v->v[position],(v->size-position)*sizeof(CV_TYPE));				\
+        if (v->item_ctr || v->item_cpy) cvp_memset(&v->v[position],0,sizeof(CV_TYPE));											\
+        if (v->item_ctr) v->item_ctr(&v->v[position]);																		\
+        item_cpy(&v->v[position],&v_val);                                                                           \
+                                                                                                                     \
+        if (v->item_dtr) v->item_dtr(&v_val);                                                                        \
+    }                                                                               \
+    else    {       \
+        if (v->size == v->capacity) {CV_VECTOR_TYPE_FCT(CV_TYPE,_reserve)(v,v->size+1);}                            \
+        if (position<v->size) memmove(&v->v[position+1],&v->v[position],(v->size-position)*sizeof(CV_TYPE));				\
+        if (v->item_ctr || v->item_cpy) cvp_memset(&v->v[position],0,sizeof(CV_TYPE));											\
+        if (v->item_ctr) v->item_ctr(&v->v[position]);																		\
+        item_cpy(&v->v[position],item_to_insert);                                                                \
+    }       \
+    *((size_t*) &v->size)=v->size+1;																					\
 	return position;																									\
 }																														\
 CV_API_DEF size_t CV_VECTOR_TYPE_FCT(CV_TYPE,_insert_at_by_val)(CV_VECTOR_TYPE(CV_TYPE)* v,const CV_TYPE item_to_insert,size_t position)   {return CV_VECTOR_TYPE_FCT(CV_TYPE,_insert_at)(v,&item_to_insert,position);}	\
+CV_API_DEF size_t CV_VECTOR_TYPE_FCT(CV_TYPE,_insert_range_at)(CV_VECTOR_TYPE(CV_TYPE)* v,const CV_TYPE* items_to_insert,size_t num_items_to_insert,size_t start_position)  {		\
+    /* position is in [0,v->size] */																					\
+    const size_t end_position = start_position+num_items_to_insert;size_t i;                         \
+    CV_TYPE* v_val=NULL;const CV_TYPE* pitems=items_to_insert;											\
+    CV_ASSERT(v && start_position<=v->size);																					\
+    if (num_items_to_insert==0) return start_position;                                      \
+    if (v->v && (items_to_insert+num_items_to_insert)>=v->v && items_to_insert<(v->v+v->size))  {									\
+        v_val = (CV_TYPE*) cv_malloc(num_items_to_insert*sizeof(CV_TYPE));											\
+        if (v->item_ctr || v->item_cpy) cvp_memset(v_val,0,num_items_to_insert*sizeof(CV_TYPE));											\
+        if (v->item_cpy)	{																	\
+            if (v->item_ctr)	{																\
+                for (i=0;i<num_items_to_insert;i++)   {                                   \
+                    v->item_ctr(&v_val[i]);														\
+                    v->item_cpy(&v_val[i],&items_to_insert[i]);   							\
+                }																				\
+            }																					\
+            else	{for (i=0;i<num_items_to_insert;i++)   v->item_cpy(&v_val[i],&items_to_insert[i]);}		\
+        }																						\
+        else	{																				\
+            if (v->item_ctr)	{for (i=0;i<num_items_to_insert;i++)   v->item_ctr(&v_val[i]);}	\
+            memcpy(&v_val[0],&v_val[num_items_to_insert],num_items_to_insert*sizeof(CV_TYPE));				\
+        }	    \
+        pitems = v_val;     \
+    }       \
+    if (v->size+num_items_to_insert > v->capacity) {                                                   \
+        CV_VECTOR_TYPE_FCT(CV_TYPE,_reserve)(v,v->size+num_items_to_insert);    																		\
+    }       \
+    if (start_position<v->size) memmove(&v->v[end_position],&v->v[start_position],(v->size-start_position)*sizeof(CV_TYPE));        \
+    if (v->item_ctr || v->item_cpy) cvp_memset(&v->v[start_position],0,num_items_to_insert*sizeof(CV_TYPE));											\
+    if (v->item_cpy)	{																	\
+        if (v->item_ctr)	{																\
+            for (i=start_position;i<end_position;i++)   {                                   \
+                v->item_ctr(&v->v[i]);														\
+                v->item_cpy(&v->v[i],&pitems[i-start_position]);   							\
+            }																				\
+        }																					\
+        else	{for (i=start_position;i<end_position;i++)   v->item_cpy(&v->v[i],&pitems[i-start_position]);}		\
+    }																						\
+    else	{																				\
+        if (v->item_ctr)	{for (i=start_position;i<end_position;i++)   v->item_ctr(&v->v[i]);}	\
+        memcpy(&v->v[start_position],&pitems[0],num_items_to_insert*sizeof(CV_TYPE));				\
+    }																								\
+    if (v_val) {        \
+        if (v->item_dtr)	{for (i=0;i<num_items_to_insert;i++)   v->item_dtr(&v_val[i]);}         \
+        cv_free(v_val);v_val=NULL;                           \
+    }                                                 \
+    *((size_t*) &v->size)=v->size+num_items_to_insert;																					\
+    return start_position;																									\
+    }																														\
 CV_API_DEF size_t CV_VECTOR_TYPE_FCT(CV_TYPE,_insert_sorted)(CV_VECTOR_TYPE(CV_TYPE)* v,const CV_TYPE* item_to_insert,int* match,int insert_even_if_item_match)  {	\
     int my_match = 0;size_t position;																											\
     position = CV_VECTOR_TYPE_FCT(CV_TYPE,_binary_search)(v,item_to_insert,&my_match);																	\
@@ -503,6 +585,20 @@ CV_API_DEF int CV_VECTOR_TYPE_FCT(CV_TYPE,_remove_at)(CV_VECTOR_TYPE(CV_TYPE)* v
         if (v->item_dtr) v->item_dtr(&v->v[position]);																							\
         memmove(&v->v[position],&v->v[position+1],(v->size-position-1)*sizeof(CV_TYPE));														\
         *((size_t*) &v->size)=v->size-1;																										\
+    }																																			\
+    return removal_ok;																															\
+}																																				\
+CV_API_DEF int CV_VECTOR_TYPE_FCT(CV_TYPE,_remove_range_at)(CV_VECTOR_TYPE(CV_TYPE)* v,size_t start_item_position,size_t num_items_to_remove)  {																	\
+    /* (start_item_position+num_items_to_remove) is <= size */																											\
+    const size_t end_item_position = start_item_position+num_items_to_remove;                                                                   \
+    int removal_ok;size_t i;																													\
+    CV_ASSERT(v);																																\
+    removal_ok = end_item_position<=v->size ? 1 : 0;																									\
+    CV_ASSERT(removal_ok);	/* error: start_item_position + num_items_to_remove > v.size */																						\
+    if (removal_ok && num_items_to_remove>0)	{																															\
+        if (v->item_dtr) {for (i=start_item_position;i<end_item_position;i++) v->item_dtr(&v->v[i]);}	                                        \
+        if (end_item_position<v->size) memmove(&v->v[start_item_position],&v->v[end_item_position],(v->size-end_item_position)*sizeof(CV_TYPE));                               \
+        *((size_t*) &v->size)=v->size-num_items_to_remove;																						\
     }																																			\
     return removal_ok;																															\
 }																																				\
@@ -587,9 +683,11 @@ CV_API_DEF void CV_VECTOR_TYPE_FCT(CV_TYPE,_create_with)(CV_VECTOR_TYPE(CV_TYPE)
     typedef size_t (* search_by_val_mf)(const CV_VECTOR_TYPE(CV_TYPE)*,const CV_TYPE,int*);		\
     typedef size_t (* insert_at_mf)(CV_VECTOR_TYPE(CV_TYPE)*,const CV_TYPE*,size_t);				\
     typedef size_t (* insert_at_by_val_mf)(CV_VECTOR_TYPE(CV_TYPE)*,const CV_TYPE,size_t);		\
+    typedef size_t (* insert_range_at_mf)(CV_VECTOR_TYPE(CV_TYPE)*,const CV_TYPE*,size_t,size_t);     \
     typedef size_t (* insert_sorted_mf)(CV_VECTOR_TYPE(CV_TYPE)*,const CV_TYPE*,int*,int);		\
     typedef size_t (* insert_sorted_by_val_mf)(CV_VECTOR_TYPE(CV_TYPE)*,const CV_TYPE,int*,int);	\
     typedef int (* remove_at_mf)(CV_VECTOR_TYPE(CV_TYPE)*,size_t);								\
+    typedef int (* remove_range_at_mf)(CV_VECTOR_TYPE(CV_TYPE)*,size_t,size_t);        \
     typedef void (* cpy_mf)(CV_VECTOR_TYPE(CV_TYPE)*,const CV_VECTOR_TYPE(CV_TYPE)*);						\
     typedef void (* dbg_check_mf)(const CV_VECTOR_TYPE(CV_TYPE)*);								\
                                                                                         \
@@ -617,9 +715,11 @@ CV_API_DEF void CV_VECTOR_TYPE_FCT(CV_TYPE,_create_with)(CV_VECTOR_TYPE(CV_TYPE)
     *((search_by_val_mf*)&v->binary_search_by_val)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_binary_search_by_val);	\
     *((insert_at_mf*)&v->insert_at)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_insert_at);					\
     *((insert_at_by_val_mf*)&v->insert_at_by_val)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_insert_at_by_val);		\
+    *((insert_range_at_mf*)&v->insert_range_at)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_insert_range_at);					\
     *((insert_sorted_mf*)&v->insert_sorted)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_insert_sorted);		\
     *((insert_sorted_by_val_mf*)&v->insert_sorted_by_val)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_insert_sorted_by_val);		\
     *((remove_at_mf*)&v->remove_at)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_remove_at);					\
+    *((remove_range_at_mf*)&v->remove_range_at)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_remove_range_at);					\
     *((cpy_mf*)&v->cpy)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_cpy);										\
     *((dbg_check_mf*)&v->dbg_check)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_dbg_check);					\
                                                                                         \
@@ -630,9 +730,9 @@ CV_EXTERN_C_END														\
 
 
 
-#define CV_DECLARATION_AND_DEFINITION(CV_TYPE)               \
-    CV_DECLARATION(CV_TYPE)                                  \
-    CV_DEFINITION(CV_TYPE)
+#define CV_DECLARE_AND_DEFINE(CV_TYPE)               \
+    CV_DECLARE(CV_TYPE)                                  \
+    CV_DEFINE(CV_TYPE)
 
 
 /* ------------------------------------------------- */

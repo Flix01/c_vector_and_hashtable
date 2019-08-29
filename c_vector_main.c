@@ -38,12 +38,19 @@ v[4]={	500,	10,	333};
 [cv_mystruct_dbg_check]:
     size: 5. capacity: 7. sizeof(mystruct): 12 Bytes.
     sorting: OK.
-    memory_used: 316 Bytes. memory_minimal_possible: 292 Bytes. mem_used_percentage: 108.22% (100% is the best possible result).
+    memory_used: 332 Bytes. memory_minimal_possible: 308 Bytes. mem_used_percentage: 107.79% (100% is the best possible result).
 [cv_mystruct_dbg_check]:
     size: 5. capacity: 5. sizeof(mystruct): 12 Bytes.
     sorting: OK.
-    memory_used: 292 Bytes. memory_minimal_possible: 292 Bytes. mem_used_percentage: 100.00% (100% is the best possible result).
-item={	100,	50,	333}	found at v[2].
+    memory_used: 308 Bytes. memory_minimal_possible: 308 Bytes. mem_used_percentage: 100.00% (100% is the best possible result).
+re-inserting v[0]={	50,	10,	333};
+v[0]={	50,	10,	333};
+v[1]={	50,	10,	333};
+v[2]={	100,	10,	333};
+v[3]={	100,	50,	333};
+v[4]={	200,	50,	333};
+v[5]={	500,	10,	333};
+item={	100,	50,	333}	found at v[3].
 item={	100,	10,	100}	not found.
 
 SORTED STRINGVECTOR TEST:
@@ -94,7 +101,7 @@ static int mystruct_cmp(const mystruct* a,const mystruct* b) {
 
 #ifndef C_VECTOR_mystruct_H     /* I think it's safer to add these guards */
 #define C_VECTOR_mystruct_H
-CV_DECLARATION_AND_DEFINITION(mystruct) /* here we declare and define cv_mystruct (a.k.a. std::vector<mystruct>) */
+CV_DECLARE_AND_DEFINE(mystruct) /* here we declare and define cv_mystruct (a.k.a. std::vector<mystruct>) */
 #endif /* C_VECTOR_mystruct_H */
 /* What the lines above do, is to create the type-safe vector structure:
 typedef struct {
@@ -182,7 +189,19 @@ static void SimpleTest(void)   {
     /* (optional) debug and optimize memory usage */
     cv_mystruct_dbg_check(&v);  /* displays dbg info */
     cv_mystruct_shrink_to_fit(&v);  /* frees all unused memory (slow) */
+    CV_ASSERT(v.size==v.capacity);
     cv_mystruct_dbg_check(&v);  /* displays dbg info again */
+
+    /* (test) we re-add an already inserted item (right after 'cv_mystruct_shrink_to_fit(...)' so that a reallocation will happen invalidating the item pointer) */
+    if (v.size>0) {
+        const mystruct* pitem = &v.v[0];
+        printf("re-inserting v[0]={\t%d,\t%d,\t%d};\n",v.v[0].a,v.v[0].b,v.v[0].c);
+        CV_ASSERT(v.v && pitem>=v.v && pitem<(v.v+v.size)); /* if a realloc happens, 'pitem' will be invalidated before we can copy it back in the vector, unless the code is robust enough to detect this border case */
+        cv_mystruct_insert_sorted(&v,pitem,NULL,1); /* of course we can just use '&v.v[itemIdx]' instead of 'pitem' here */
+    }
+
+    /* display all items */
+    for (i=0;i<v.size;i++) printf("v[%lu]={\t%d,\t%d,\t%d};\n",i,v.v[i].a,v.v[i].b,v.v[i].c);
 
     /* now we can serch the sorted vector for certain items this way */
     tmp.a=100;tmp.b=50;tmp.c=333;
@@ -227,11 +246,11 @@ static void string_cpy(string* a,const string* b)    {
 /* Here we show that we can split the above macro in: */
 #ifndef C_VECTOR_string_decl_H
 #define C_VECTOR_string_decl_H
-CV_DECLARATION(string)              /* this is handy when used in header files */
+CV_DECLARE(string)              /* this is handy when used in header files */
 #endif /* C_VECTOR_string_decl_H */
 #ifndef C_VECTOR_string_def_H
 #define C_VECTOR_string_def_H
-CV_DEFINITION(string)               /* this can probably be defined once in a single source file... (but it needs declaration too) (untested) */
+CV_DEFINE(string)               /* this can probably be defined once in a single source file... (but it needs declaration too) (untested) */
 #endif /* C_VECTOR_string_def_H */
 
 static void StringVectorTest(void) {
@@ -323,12 +342,12 @@ static void big_t_dtr(big_t* a)    {
 }
 static void big_t_cpy(big_t* a,const big_t* b)    {
     a->a=b->a;
-    cv_mystruct_cpy(&a->v,&b->v);   /* 'cv_mystruct_cpy(...)' has been created by <c_vector.h> for mystruct */
+    cv_mystruct_cpy(&a->v,&b->v);   /* 'cv_mystruct_cpy(...)' has been created by CV_DECLARE(mystruct) */
 }
 /* same macro as above, but now for 'big_t' */
 #ifndef C_VECTOR_big_t_H
 #define C_VECTOR_big_t_H
-CV_DECLARATION_AND_DEFINITION(big_t)
+CV_DECLARE_AND_DEFINE(big_t)
 #endif /* C_VECTOR_big_t_H */
 
 static void ComplexTest(void) {

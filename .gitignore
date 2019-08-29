@@ -65,4 +65,9 @@ c_hashtable_main
 deprecated/main
 *.pro
 *.user
+c_vector_test.c
+c_hashtable_test.c
+c_vector_test
+c_hashtable_test
+
 
