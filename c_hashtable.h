@@ -32,6 +32,8 @@ freely, subject to the following restrictions:
    CH_NUM_BUCKETS           (mandatory: and must be copied to some 'type-safe definition')
    CH_USE_VOID_PTRS_IN_CMP_FCT  (optional: if you want to share cmp_fcts with c style functions like qsort)
    CHV_KEY_SUPPORT_EQUALITY_CMP_IN_UNSORTED_SEARCH (optional, but affects only unsorted buckets, which we should never use)
+   C_HASHTABLE_IMPLEMENTATION   	(optional: it needs CH_ENABLE_DECLARATION_AND_DEFINITION. See history for version 1.04)
+   C_HASHTABLE_FORCE_DECLARATION  	(optional: it needs CH_ENABLE_DECLARATION_AND_DEFINITION. See history for version 1.04)
 
    GLOBAL DEFINITIONS: The following definitions (when used) must be set
    globally (= in the Project Options or in a StdAfx.h file):
@@ -39,6 +41,7 @@ freely, subject to the following restrictions:
    CH_MAX_NUM_BUCKETS                   // must be 256, 65536 or 2147483648 and defines ch_hash_uint as unsigned char, unsigned short or unsigned int
    CH_DISABLE_FAKE_MEMBER_FUNCTIONS     // faster with this defined
    CH_DISABLE_CLEARING_ITEM_MEMORY      // faster with this defined
+   CH_ENABLE_DECLARATION_AND_DEFINITION // slower with this defined (but saves memory)
    CH_MALLOC
    CH_REALLOC
    CH_FREE
@@ -57,12 +60,40 @@ freely, subject to the following restrictions:
 #endif
 
 #ifndef CH_VERSION
-#define CH_VERSION               "1.03"
-#define CH_VERSION_NUM           0103
+#define CH_VERSION               "1.04"
+#define CH_VERSION_NUM           0104
 #endif
 
 
 /* HISTORY:
+   CH_VERSION_NUM 0104:
+   -> added the global definition CH_ENABLE_DECLARATION_AND_DEFINITION (disabled by default, because it's faster and easier not to use it)
+      Normally we generate ch_mykey_myvalue (== the type std::unordered_map<mykey,myvalue>), this way:
+          #ifndef C_HASHTABLE_mykey_myvalue_H
+          #define C_HASHTABLE_mykey_myvalue_H
+          #    define CH_KEY_TYPE mykey
+          #    define CH_VALUE_TYPE myvalue
+          #    define CH_NUM_BUCKETS_mykey_myvalue 256
+          #    define CH_NUM_BUCKETS CH_NUM_BUCKETS_mykey_myvalue
+          #    include <c_hashtable.h>
+          #endif
+      When CH_ENABLE_DECLARATION_AND_DEFINITION is defined (and it must be defined globally == in the Project Options),
+      then the code above is still valid (and much lighter), but we need to include its implementation (once per item type)
+      in a (single) .c file this way:
+          #ifdef CH_ENABLE_DECLARATION_AND_DEFINITION
+          #	   define C_HASHTABLE_IMPLEMENTATION
+          #    ifndef C_HASHTABLE_mykey_myvalue_H
+          #        define C_HASHTABLE_FORCE_DECLARATION
+          #    endif
+          #    define CH_KEY_TYPE mykey
+          #    define CH_VALUE_TYPE myvalue
+          #    define CH_NUM_BUCKETS CH_NUM_BUCKETS_mykey_myvalue   // or just set the same number directly
+          #    include <c_hashtable.h>
+          #endif
+      Please note that C_HASHTABLE_IMPLEMENTATION and C_HASHTABLE_FORCE_DECLARATION are 'scoped definitions' (== get undefined
+      at the end of <c_hashtable.h>), and of course CH_KEY_TYPE, CH_VALUE_TYPE and CH_NUM_BUCKETS too:
+      so they must be redefined by the user every time they are needed.
+
    CH_VERSION_NUM 0103:
    -> fixed 'ch_xxx_swap(...)'.
    -> added 'ch_xxx_shrink_to_fit(...)'
@@ -97,8 +128,18 @@ freely, subject to the following restrictions:
 
 /* ------------------------------------------------- */
 #ifdef __cplusplus
-extern "C"	{
+#   undef CH_EXTERN_C_START
+#   define CH_EXTERN_C_START   extern "C"  {
+#   undef CH_EXTERN_C_END
+#   define CH_EXTERN_C_END  }
+#   define CH_DEFAULT_STRUCT_INIT {}
+#else
+#   define CH_EXTERN_C_START /* no-op */
+#   define CH_EXTERN_C_END /* no-op */
+#   define CH_DEFAULT_STRUCT_INIT {0}
 #endif
+
+CH_EXTERN_C_START
 
 #if (defined (NDEBUG) || defined (_NDEBUG))
 #   undef CH_NO_ASSERT
@@ -145,6 +186,22 @@ extern "C"	{
 #ifndef CH_API
 #define CH_API __inline static
 #endif
+
+#ifndef CH_ENABLE_DECLARATION_AND_DEFINITION
+#	ifndef CH_API_DEC
+#		define CH_API_DEC CH_API
+#	endif
+#	ifndef CH_API_DEF
+#		define CH_API_DEF CH_API
+#	endif
+#else /* CH_ENABLE_DECLARATION_AND_DEFINITION */
+#	ifndef CH_API_DEC
+#		define CH_API_DEC __inline extern
+#	endif
+#	ifndef CH_API_DEF
+#		define CH_API_DEF /* no-op */
+#	endif
+#endif /* CH_ENABLE_DECLARATION_AND_DEFINITION */
 
 #ifndef CH_XSTR
 #define CH_XSTR(s) CH_STR(s)
@@ -209,14 +266,14 @@ extern "C"	{
 #   endif
 #endif
 
-
-#ifndef CH_HASHTABLE_TYPE
 #define CH_HASHTABLE_ITEM_TYPE_TMP CH_CAT(CH_KEY_TYPE,_) 
 #define CH_HASHTABLE_ITEM_TYPE CH_CAT(CH_HASHTABLE_ITEM_TYPE_TMP,CH_VALUE_TYPE) 
 #define CH_HASHTABLE_TYPE CH_CAT(ch_,CH_HASHTABLE_ITEM_TYPE)
 #define CH_VECTOR_TYPE CH_CAT(chv_,CH_HASHTABLE_ITEM_TYPE)
 #define CH_VECTORS_TYPE CH_CAT(chvs_,CH_HASHTABLE_ITEM_TYPE)
 #define CH_VECTOR_TYPE_FCT(name) CH_CAT(CH_VECTOR_TYPE,name)
+
+#if (!defined(CH_ENABLE_DECLARATION_AND_DEFINITION) || !defined(C_HASHTABLE_IMPLEMENTATION) || defined(C_HASHTABLE_FORCE_DECLARATION))
 typedef struct {
 	CH_KEY_TYPE k;
 	CH_VALUE_TYPE v;	
@@ -262,7 +319,33 @@ struct CH_HASHTABLE_TYPE {
 };
 typedef struct CH_VECTOR_TYPE CH_VECTOR_TYPE;
 typedef CH_VECTOR_TYPE CH_VECTORS_TYPE[CH_NUM_BUCKETS];
-#endif /* CH_HASHTABLE_TYPE */
+#ifdef CH_ENABLE_DECLARATION_AND_DEFINITION
+/* function declarations */
+CH_API_DEC void CH_HASHTABLE_TYPE_FCT(_free)(CH_HASHTABLE_TYPE* ht);
+CH_API_DEC void CH_HASHTABLE_TYPE_FCT(_clear)(CH_HASHTABLE_TYPE* ht);
+CH_API_DEC CH_VALUE_TYPE* CH_HASHTABLE_TYPE_FCT(_get_or_insert)(CH_HASHTABLE_TYPE* ht,const CH_KEY_TYPE* key,int* match);
+CH_API_DEC CH_VALUE_TYPE* CH_HASHTABLE_TYPE_FCT(_get_or_insert_by_val)(CH_HASHTABLE_TYPE* ht,const CH_KEY_TYPE key,int* match);
+CH_API_DEC CH_VALUE_TYPE* CH_HASHTABLE_TYPE_FCT(_get)(CH_HASHTABLE_TYPE* ht,const CH_KEY_TYPE* key);
+CH_API_DEC CH_VALUE_TYPE* CH_HASHTABLE_TYPE_FCT(_get_by_val)(CH_HASHTABLE_TYPE* ht,const CH_KEY_TYPE key);
+CH_API_DEC const CH_VALUE_TYPE* CH_HASHTABLE_TYPE_FCT(_get_const)(const CH_HASHTABLE_TYPE* ht,const CH_KEY_TYPE* key);
+CH_API_DEC const CH_VALUE_TYPE* CH_HASHTABLE_TYPE_FCT(_get_const_by_val)(const CH_HASHTABLE_TYPE* ht,const CH_KEY_TYPE key);
+CH_API_DEC int CH_HASHTABLE_TYPE_FCT(_remove)(CH_HASHTABLE_TYPE* ht,const CH_KEY_TYPE* key);
+CH_API_DEC int CH_HASHTABLE_TYPE_FCT(_remove_by_val)(CH_HASHTABLE_TYPE* ht,const CH_KEY_TYPE key);
+CH_API_DEC size_t CH_HASHTABLE_TYPE_FCT(_get_num_items)(const CH_HASHTABLE_TYPE* ht);
+CH_API_DEC int CH_HASHTABLE_TYPE_FCT(_dbg_check)(const CH_HASHTABLE_TYPE* ht);
+CH_API_DEC void CH_HASHTABLE_TYPE_FCT(_swap)(CH_HASHTABLE_TYPE* a,CH_HASHTABLE_TYPE* b);
+CH_API_DEC void CH_HASHTABLE_TYPE_FCT(_cpy)(CH_HASHTABLE_TYPE* a,const CH_HASHTABLE_TYPE* b);
+CH_API_DEC void CH_HASHTABLE_TYPE_FCT(_shrink_to_fit)(CH_HASHTABLE_TYPE* ht);
+CH_API_DEC void CH_HASHTABLE_TYPE_FCT(_create_with)(
+        CH_HASHTABLE_TYPE* ht,
+        ch_hash_uint (*key_hash)(const CH_KEY_TYPE*),
+        int (*key_cmp) (const CH_CMP_TYPE*,const CH_CMP_TYPE*),
+        void (*key_ctr)(CH_KEY_TYPE*),void (*key_dtr)(CH_KEY_TYPE*),void (*key_cpy)(CH_KEY_TYPE*,const CH_KEY_TYPE*),
+        void (*value_ctr)(CH_VALUE_TYPE*),void (*value_dtr)(CH_VALUE_TYPE*),void (*value_cpy)(CH_VALUE_TYPE*,const CH_VALUE_TYPE*),
+        size_t initial_bucket_capacity);
+CH_API_DEC void CH_HASHTABLE_TYPE_FCT(_create)(CH_HASHTABLE_TYPE* ht,ch_hash_uint (*key_hash)(const CH_KEY_TYPE*),int (*key_cmp) (const CH_CMP_TYPE*,const CH_CMP_TYPE*),size_t initial_bucket_capacity);
+#endif /* CH_ENABLE_DECLARATION_AND_DEFINITION */
+#endif /*  (!defined(CH_ENABLE_DECLARATION_AND_DEFINITION) || !defined(C_HASHTABLE_IMPLEMENTATION) || defined(C_HASHTABLE_FORCE_DECLARATION)) */
 
 #ifndef CH_PRIV_FUNCTIONS
 #define CH_PRIV_FUNCTIONS
@@ -357,7 +440,8 @@ CH_API unsigned ch_hash_murmur3(const unsigned char* key, size_t len, unsigned s
 #endif /* CH_PRIV_FUNCTIONS */
 
 
-/* --- PRIVATE FUNCTIONS START ------------------------------------------------ */
+#if (!defined(CH_ENABLE_DECLARATION_AND_DEFINITION) || defined(C_HASHTABLE_IMPLEMENTATION))
+/* --- PRIVATE FUNCTIONS START -------------------------------------------------- */
 CH_API void CH_VECTOR_TYPE_FCT(_clear)(CH_VECTOR_TYPE* v,const CH_HASHTABLE_TYPE* ht)	{
     CH_ASSERT(v && ht);
     if (v->v) {
@@ -466,6 +550,7 @@ CH_API size_t CH_VECTOR_TYPE_FCT(_binary_search)(const CH_VECTOR_TYPE* v,const C
 #if 0
 CH_API size_t CH_VECTOR_TYPE_FCT(_insert_at)(CH_VECTOR_TYPE* v,const CH_HASHTABLE_ITEM_TYPE* item_to_insert,size_t position,const CH_HASHTABLE_TYPE* ht)  {
     /* position is in [0,v->size] */
+    /* warning: this code does NOT support passing pointers to items already present in this hashtable */
     CH_ASSERT(v && ht && item_to_insert && position<=v->size);
     CH_VECTOR_TYPE_FCT(_reserve)(v,v->size+1,ht);
     if (position<v->size) memmove(&v->v[position+1],&v->v[position],(v->size-position)*sizeof(CH_HASHTABLE_ITEM_TYPE));
@@ -491,6 +576,7 @@ CH_API size_t CH_VECTOR_TYPE_FCT(_insert_at)(CH_VECTOR_TYPE* v,const CH_HASHTABL
 #endif /* 0 */
 CH_API size_t CH_VECTOR_TYPE_FCT(_insert_key_at)(CH_VECTOR_TYPE* v,const CH_KEY_TYPE* key_to_insert,size_t position,const CH_HASHTABLE_TYPE* ht)  {
     /* position is in [0,v->size] */
+    /* warning: this code does NOT support passing pointers to keys already present in this hashtable */
     CH_ASSERT(v && ht && key_to_insert && position<=v->size);
     CH_VECTOR_TYPE_FCT(_reserve)(v,v->size+1,ht);
     if (position<v->size) memmove(&v->v[position+1],&v->v[position],(v->size-position)*sizeof(CH_HASHTABLE_ITEM_TYPE));
@@ -520,7 +606,7 @@ CH_API int CH_VECTOR_TYPE_FCT(_remove_at)(CH_VECTOR_TYPE* v,size_t position,cons
 }
 /* --- PRIVATE FUNCTIONS END -------------------------------------------------- */
 
-CH_API void CH_HASHTABLE_TYPE_FCT(_free)(CH_HASHTABLE_TYPE* ht)    {
+CH_API_DEF void CH_HASHTABLE_TYPE_FCT(_free)(CH_HASHTABLE_TYPE* ht)    {
     if (ht) {
         const unsigned short max_value = (CH_NUM_BUCKETS-1);
         unsigned short i=0;
@@ -533,7 +619,7 @@ CH_API void CH_HASHTABLE_TYPE_FCT(_free)(CH_HASHTABLE_TYPE* ht)    {
         while (i++!=max_value);
     }
 }
-CH_API void CH_HASHTABLE_TYPE_FCT(_clear)(CH_HASHTABLE_TYPE* ht)    {
+CH_API_DEF void CH_HASHTABLE_TYPE_FCT(_clear)(CH_HASHTABLE_TYPE* ht)    {
     if (ht) {
         const unsigned short max_value = (CH_NUM_BUCKETS-1);
         unsigned short i=0;
@@ -546,7 +632,7 @@ CH_API void CH_HASHTABLE_TYPE_FCT(_clear)(CH_HASHTABLE_TYPE* ht)    {
    return pointer to 'value' items inside the hashtable, that are invalidated when
    the hashtable inserts or removes other items. User should copy the result for longer storage.
 */
-CH_API CH_VALUE_TYPE* CH_HASHTABLE_TYPE_FCT(_get_or_insert)(CH_HASHTABLE_TYPE* ht,const CH_KEY_TYPE* key,int* match) {
+CH_API_DEF CH_VALUE_TYPE* CH_HASHTABLE_TYPE_FCT(_get_or_insert)(CH_HASHTABLE_TYPE* ht,const CH_KEY_TYPE* key,int* match) {
     CH_VECTOR_TYPE* v = NULL;
     size_t position;ch_hash_uint hash;int match2;
     CH_ASSERT(ht && ht->key_hash);
@@ -601,8 +687,8 @@ CH_API CH_VALUE_TYPE* CH_HASHTABLE_TYPE_FCT(_get_or_insert)(CH_HASHTABLE_TYPE* h
 #   endif
     return &v->v[position].v;
 }
-CH_API CH_VALUE_TYPE* CH_HASHTABLE_TYPE_FCT(_get_or_insert_by_val)(CH_HASHTABLE_TYPE* ht,const CH_KEY_TYPE key,int* match) {return CH_HASHTABLE_TYPE_FCT(_get_or_insert)(ht,&key,match);}
-CH_API CH_VALUE_TYPE* CH_HASHTABLE_TYPE_FCT(_get)(CH_HASHTABLE_TYPE* ht,const CH_KEY_TYPE* key) {
+CH_API_DEF CH_VALUE_TYPE* CH_HASHTABLE_TYPE_FCT(_get_or_insert_by_val)(CH_HASHTABLE_TYPE* ht,const CH_KEY_TYPE key,int* match) {return CH_HASHTABLE_TYPE_FCT(_get_or_insert)(ht,&key,match);}
+CH_API_DEF CH_VALUE_TYPE* CH_HASHTABLE_TYPE_FCT(_get)(CH_HASHTABLE_TYPE* ht,const CH_KEY_TYPE* key) {
     CH_VECTOR_TYPE* v = NULL;
     size_t position;ch_hash_uint hash;int match=0;
     CH_ASSERT(ht && ht->key_hash);
@@ -627,11 +713,11 @@ CH_API CH_VALUE_TYPE* CH_HASHTABLE_TYPE_FCT(_get)(CH_HASHTABLE_TYPE* ht,const CH
 
     return (match ? &v->v[position].v : NULL);
 }
-CH_API CH_VALUE_TYPE* CH_HASHTABLE_TYPE_FCT(_get_by_val)(CH_HASHTABLE_TYPE* ht,const CH_KEY_TYPE key) {return CH_HASHTABLE_TYPE_FCT(_get)(ht,&key);}
-CH_API const CH_VALUE_TYPE* CH_HASHTABLE_TYPE_FCT(_get_const)(const CH_HASHTABLE_TYPE* ht,const CH_KEY_TYPE* key) {return (const CH_VALUE_TYPE*) CH_HASHTABLE_TYPE_FCT(_get)((CH_HASHTABLE_TYPE*)ht,key);}
-CH_API const CH_VALUE_TYPE* CH_HASHTABLE_TYPE_FCT(_get_const_by_val)(const CH_HASHTABLE_TYPE* ht,const CH_KEY_TYPE key) {return (const CH_VALUE_TYPE*) CH_HASHTABLE_TYPE_FCT(_get)((CH_HASHTABLE_TYPE*)ht,&key);}
+CH_API_DEF CH_VALUE_TYPE* CH_HASHTABLE_TYPE_FCT(_get_by_val)(CH_HASHTABLE_TYPE* ht,const CH_KEY_TYPE key) {return CH_HASHTABLE_TYPE_FCT(_get)(ht,&key);}
+CH_API_DEF const CH_VALUE_TYPE* CH_HASHTABLE_TYPE_FCT(_get_const)(const CH_HASHTABLE_TYPE* ht,const CH_KEY_TYPE* key) {return (const CH_VALUE_TYPE*) CH_HASHTABLE_TYPE_FCT(_get)((CH_HASHTABLE_TYPE*)ht,key);}
+CH_API_DEF const CH_VALUE_TYPE* CH_HASHTABLE_TYPE_FCT(_get_const_by_val)(const CH_HASHTABLE_TYPE* ht,const CH_KEY_TYPE key) {return (const CH_VALUE_TYPE*) CH_HASHTABLE_TYPE_FCT(_get)((CH_HASHTABLE_TYPE*)ht,&key);}
 
-CH_API int CH_HASHTABLE_TYPE_FCT(_remove)(CH_HASHTABLE_TYPE* ht,const CH_KEY_TYPE* key) {
+CH_API_DEF int CH_HASHTABLE_TYPE_FCT(_remove)(CH_HASHTABLE_TYPE* ht,const CH_KEY_TYPE* key) {
     CH_VECTOR_TYPE* v = NULL;
     size_t position;ch_hash_uint hash;int match = 0;
     CH_ASSERT(ht && ht->key_hash);
@@ -658,13 +744,13 @@ CH_API int CH_HASHTABLE_TYPE_FCT(_remove)(CH_HASHTABLE_TYPE* ht,const CH_KEY_TYP
     }
     return 0;
 }
-CH_API int CH_HASHTABLE_TYPE_FCT(_remove_by_val)(CH_HASHTABLE_TYPE* ht,const CH_KEY_TYPE key) {return CH_HASHTABLE_TYPE_FCT(_remove)(ht,&key);}
-CH_API size_t CH_HASHTABLE_TYPE_FCT(_get_num_items)(const CH_HASHTABLE_TYPE* ht) {
+CH_API_DEF int CH_HASHTABLE_TYPE_FCT(_remove_by_val)(CH_HASHTABLE_TYPE* ht,const CH_KEY_TYPE key) {return CH_HASHTABLE_TYPE_FCT(_remove)(ht,&key);}
+CH_API_DEF size_t CH_HASHTABLE_TYPE_FCT(_get_num_items)(const CH_HASHTABLE_TYPE* ht) {
     size_t i,sum=0;CH_ASSERT(ht);
     for (i=0;i<CH_NUM_BUCKETS;i++) sum+=ht->buckets[i].size;
     return sum;
 }
-CH_API int CH_HASHTABLE_TYPE_FCT(_dbg_check)(const CH_HASHTABLE_TYPE* ht) {
+CH_API_DEF int CH_HASHTABLE_TYPE_FCT(_dbg_check)(const CH_HASHTABLE_TYPE* ht) {
     size_t i,j,num_total_items=0,num_total_capacity=0,num_sorting_errors=0,min_num_bucket_items=(size_t)-1,max_num_bucket_items=0,min_cnt=0,max_cnt=0,avg_cnt=0,avg_round=0;
     double avg_num_bucket_items=0.0,std_deviation=0.0;
     size_t mem_minimal=sizeof(CH_HASHTABLE_TYPE),mem_used=sizeof(CH_HASHTABLE_TYPE);
@@ -743,15 +829,14 @@ CH_API int CH_HASHTABLE_TYPE_FCT(_dbg_check)(const CH_HASHTABLE_TYPE* ht) {
     return num_total_items;
 }
 
-/* two untested functions */
-CH_API void CH_HASHTABLE_TYPE_FCT(_swap)(CH_HASHTABLE_TYPE* a,CH_HASHTABLE_TYPE* b)  {
+CH_API_DEF void CH_HASHTABLE_TYPE_FCT(_swap)(CH_HASHTABLE_TYPE* a,CH_HASHTABLE_TYPE* b)  {
     CH_HASHTABLE_TYPE t;
     CH_ASSERT(a && b);
     memcpy(&t,a,sizeof(CH_HASHTABLE_TYPE));
     memcpy(a,b,sizeof(CH_HASHTABLE_TYPE));
     memcpy(b,&t,sizeof(CH_HASHTABLE_TYPE));
 }
-CH_API void CH_HASHTABLE_TYPE_FCT(_cpy)(CH_HASHTABLE_TYPE* a,const CH_HASHTABLE_TYPE* b) {
+CH_API_DEF void CH_HASHTABLE_TYPE_FCT(_cpy)(CH_HASHTABLE_TYPE* a,const CH_HASHTABLE_TYPE* b) {
     size_t i;
     typedef ch_hash_uint (*key_hash_type)(const CH_KEY_TYPE*);
     typedef int (*key_cmp_type)(const CH_CMP_TYPE*,const CH_CMP_TYPE*);
@@ -786,7 +871,7 @@ CH_API void CH_HASHTABLE_TYPE_FCT(_cpy)(CH_HASHTABLE_TYPE* a,const CH_HASHTABLE_
         else if(a->value_cpy)   {for (i=0;i<A->size;i++) {memcpy(&A->v[i].k,&B->v[i].k,sizeof(CH_KEY_TYPE));a->value_cpy(&A->v[i].v,&B->v[i].v);}}
     }
 }
-CH_API void CH_HASHTABLE_TYPE_FCT(_shrink_to_fit)(CH_HASHTABLE_TYPE* ht)   {
+CH_API_DEF void CH_HASHTABLE_TYPE_FCT(_shrink_to_fit)(CH_HASHTABLE_TYPE* ht)   {
     if (ht)	{
         CH_HASHTABLE_TYPE o;
         memset(&o,0,sizeof(CH_HASHTABLE_TYPE));
@@ -796,7 +881,7 @@ CH_API void CH_HASHTABLE_TYPE_FCT(_shrink_to_fit)(CH_HASHTABLE_TYPE* ht)   {
     }
 }
 
-CH_API void CH_HASHTABLE_TYPE_FCT(_create_with)(
+CH_API_DEF void CH_HASHTABLE_TYPE_FCT(_create_with)(
         CH_HASHTABLE_TYPE* ht,
         ch_hash_uint (*key_hash)(const CH_KEY_TYPE*),
         int (*key_cmp) (const CH_CMP_TYPE*,const CH_CMP_TYPE*),
@@ -855,9 +940,10 @@ CH_API void CH_HASHTABLE_TYPE_FCT(_create_with)(
     *((cpy_mf*)&ht->cpy) = &CH_HASHTABLE_TYPE_FCT(_cpy);
 #   endif
 }
-CH_API void CH_HASHTABLE_TYPE_FCT(_create)(CH_HASHTABLE_TYPE* ht,ch_hash_uint (*key_hash)(const CH_KEY_TYPE*),int (*key_cmp) (const CH_CMP_TYPE*,const CH_CMP_TYPE*),size_t initial_bucket_capacity)    {
+CH_API_DEF void CH_HASHTABLE_TYPE_FCT(_create)(CH_HASHTABLE_TYPE* ht,ch_hash_uint (*key_hash)(const CH_KEY_TYPE*),int (*key_cmp) (const CH_CMP_TYPE*,const CH_CMP_TYPE*),size_t initial_bucket_capacity)    {
     CH_HASHTABLE_TYPE_FCT(_create_with)(ht,key_hash,key_cmp,NULL,NULL,NULL,NULL,NULL,NULL,initial_bucket_capacity);
 }
+#endif /* (!defined(CH_ENABLE_DECLARATION_AND_DEFINITION) || defined(C_HASHTABLE_IMPLEMENTATION)) */
 
 
 #undef CH_HASHTABLE_TYPE_FCT
@@ -874,9 +960,9 @@ CH_API void CH_HASHTABLE_TYPE_FCT(_create)(CH_HASHTABLE_TYPE* ht,ch_hash_uint (*
 #undef CH_LAST_INCLUDED_NUM_BUCKETS
 #define CH_LAST_INCLUDED_NUM_BUCKETS CH_NUM_BUCKETS
 #undef CH_NUM_BUCKETS
-#ifdef __cplusplus
-} /* extern "C" */
-#endif
+#undef C_HASHTABLE_FORCE_DECLARATION
+#undef C_HASHTABLE_IMPLEMENTATION
+CH_EXTERN_C_END
 /* ------------------------------------------------- */
 #undef CH_KEY_TYPE
 #undef CH_VALUE_TYPE
