@@ -75,8 +75,6 @@ v[0]={	20.000,	{[2:]	(10,3,3),(20,3,3)}}
 */
 #include <stdio.h>  /* printf */
 
-#include "c_vector.h"
-
 /*#define NO_SIMPLE_TEST*/
 /*#define NO_STRINGVECTOR_TEST*/
 /*#define NO_COMPLEXTEST*/
@@ -101,7 +99,8 @@ static int mystruct_cmp(const mystruct* a,const mystruct* b) {
 
 #ifndef C_VECTOR_mystruct_H     /* I think it's safer to add these guards */
 #define C_VECTOR_mystruct_H
-CV_DECLARE_AND_DEFINE(mystruct) /* here we declare and define cv_mystruct (a.k.a. std::vector<mystruct>) */
+#   define CV_TYPE mystruct
+#   include "c_vector.h"
 #endif /* C_VECTOR_mystruct_H */
 /* What the lines above do, is to create the type-safe vector structure:
 typedef struct {
@@ -243,15 +242,13 @@ static void string_cpy(string* a,const string* b)    {
     }
 }
 
-/* Here we show that we can split the above macro in: */
-#ifndef C_VECTOR_string_decl_H
-#define C_VECTOR_string_decl_H
-CV_DECLARE(string)              /* this is handy when used in header files */
-#endif /* C_VECTOR_string_decl_H */
-#ifndef C_VECTOR_string_def_H
-#define C_VECTOR_string_def_H
-CV_DEFINE(string)               /* this can probably be defined once in a single source file... (but it needs declaration too) (untested) */
-#endif /* C_VECTOR_string_def_H */
+/* Here we do the same to generate cv_string (== std::vector<string>): */
+#ifndef C_VECTOR_string_H
+#define C_VECTOR_string_H
+#   define CV_TYPE string
+#   include "c_vector.h"
+#endif
+
 
 static void StringVectorTest(void) {
     cv_string s    /* a.k.a. std::vector<string> */
@@ -346,8 +343,8 @@ static void big_t_cpy(big_t* a,const big_t* b)    {
 }
 /* same macro as above, but now for 'big_t' */
 #ifndef C_VECTOR_big_t_H
-#define C_VECTOR_big_t_H
-CV_DECLARE_AND_DEFINE(big_t)
+#   define CV_TYPE big_t
+#   include "c_vector.h"
 #endif /* C_VECTOR_big_t_H */
 
 static void ComplexTest(void) {
