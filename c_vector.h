@@ -46,7 +46,10 @@ freely, subject to the following restrictions:
    CV_NO_ASSERT
    CV_NO_STDIO
    CV_NO_STDLIB
-   CV_API
+   CV_API_INL                           // this simply defines the 'inline' keyword syntax (defaults to __inline)
+   CV_API                               // used always when CV_ENABLE_DECLARATION_AND_DEFINITION is not defined and in some global or private functions otherwise
+   CV_API_DEC                           // defaults to CV_API, or to 'CV_API_INL extern' if CV_ENABLE_DECLARATION_AND_DEFINITION is defined
+   CV_APY_DEF                           // defaults to CV_API, or to nothing if CV_ENABLE_DECLARATION_AND_DEFINITION is defined
 */
 
 #ifndef CV_TYPE
@@ -54,13 +57,17 @@ freely, subject to the following restrictions:
 #endif
 
 #ifndef CV_VERSION
-#define CV_VERSION               "1.06"
-#define CV_VERSION_NUM           0106
+#define CV_VERSION               "1.07"
+#define CV_VERSION_NUM           0107
 #endif
 
 
 
 /* HISTORY:
+   CV_VERSION_NUM 0107:
+   -> added CV_API_INL to specify the preferred 'inline' syntax
+   -> small fixed to 'cv_xxx_dbg_check(...)', in the part that detects sorting errors
+
    CV_VERSION_NUM 0106: restored syntax in version 1.03
    -> restored syntax in version 1.03, without macros and with multiple inclusions of <c_vector.h> (once per item type):
     It's simply the way of doing it. Breakpoints and asserts didn't work with the 'macro syntax' in my IDE. 
@@ -194,8 +201,12 @@ CV_EXTERN_C_START
 #include <string.h> /*memcpy,memmove,memset*/
 
 
-#ifndef CV_API
-#define CV_API __inline static
+#ifndef CV_API_INL  /* __inline, _inline or inline (C99) */
+#define CV_API_INL __inline
+#endif
+
+#ifndef CV_API /* can we remove 'static' here? */
+#define CV_API CV_API_INL static
 #endif
 
 #ifndef CV_ENABLE_DECLARATION_AND_DEFINITION
@@ -207,7 +218,7 @@ CV_EXTERN_C_START
 #	endif
 #else /* CV_ENABLE_DECLARATION_AND_DEFINITION */
 #	ifndef CV_API_DEC
-#		define CV_API_DEC __inline extern
+#		define CV_API_DEC CV_API_INL extern
 #	endif
 #	ifndef CV_API_DEF
 #		define CV_API_DEF /* no-op */
@@ -614,7 +625,7 @@ CV_API_DEF size_t CV_VECTOR_TYPE_FCT(_insert_sorted)(CV_VECTOR_TYPE* v,const CV_
 CV_API_DEF size_t CV_VECTOR_TYPE_FCT(_insert_sorted_by_val)(CV_VECTOR_TYPE* v,const CV_TYPE item_to_insert,int* match,int insert_even_if_item_match)  {return CV_VECTOR_TYPE_FCT(_insert_sorted)(v,&item_to_insert,match,insert_even_if_item_match);}
 CV_API_DEF int CV_VECTOR_TYPE_FCT(_remove_at)(CV_VECTOR_TYPE* v,size_t position)  {
     /* position is in [0,num_items) */
-    int removal_ok;size_t i;
+    int removal_ok;
 	CV_ASSERT(v);
 	removal_ok = (position<v->size) ? 1 : 0;
     CV_ASSERT(removal_ok);	/* error: position>=v->size */
@@ -675,16 +686,18 @@ CV_API_DEF void CV_VECTOR_TYPE_FCT(_dbg_check)(const CV_VECTOR_TYPE* v)  {
     const size_t mem_used=sizeof(CV_VECTOR_TYPE)+sizeof(CV_TYPE)*v->capacity;
     const double mem_used_percentage = (double)mem_used*100.0/(double)mem_minimal;
     CV_ASSERT(v);
+    /* A potemtial problem here is that sometimes users set a 'v->item_cmp' without using it in a sorted vector...
+       So in case of sorting errors, we don't assert, but still display them using fprintf(stderr,...) */
     if (v->item_cmp && v->size)    {
         const CV_TYPE* last_item = NULL;
         for (j=0;j<v->size;j++)  {
             const CV_TYPE* item = &v->v[j];
             if (last_item) {
-                if (v->item_cmp(last_item,item)>=0) {
-                    /* When this happens, it can be a wrong user 'item_cmp' function (that cannot sort items in a consistent way) */
+                if (v->item_cmp(last_item,item)>0) {
+                    /* When this happens, it can be a wrong user 'item_cmp' function (that cannot sort items in a consistent way) */                    
                     ++num_sorting_errors;
 #                   ifndef CV_NO_STDIO
-                    /*printf("[%s] Error: in v[%lu]: item_cmp(%lu,%lu)<=0 [num_items=%lu]\n",CV_XSTR(CV_VECTOR_TYPE_FCT(_dbg_check)),j-1,j,v->size);*/
+                    fprintf(stderr,"[%s] Sorting Error (%lu): item_cmp(%lu,%lu)>0 [num_items=%lu]\n",CV_XSTR(CV_VECTOR_TYPE_FCT(_dbg_check)),num_sorting_errors,j-1,j,v->size);
 #                   endif
                 }
             }

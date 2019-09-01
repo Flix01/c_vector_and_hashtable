@@ -49,7 +49,11 @@ freely, subject to the following restrictions:
    CH_NO_ASSERT
    CH_NO_STDIO
    CH_NO_STDLIB
-   CH_API
+   CH_API_INL                           // this simply defines the 'inline' keyword syntax (defaults to __inline)
+   CH_API                               // used always when CH_ENABLE_DECLARATION_AND_DEFINITION is not defined and in some global or private functions otherwise
+   CH_API_DEC                           // defaults to CH_API, or to 'CH_API_INL extern' if CH_ENABLE_DECLARATION_AND_DEFINITION is defined
+   CH_APY_DEF                           // defaults to CH_API, or to nothing if CH_ENABLE_DECLARATION_AND_DEFINITION is defined
+
 */
 
 #ifndef CH_KEY_TYPE
@@ -60,12 +64,16 @@ freely, subject to the following restrictions:
 #endif
 
 #ifndef CH_VERSION
-#define CH_VERSION               "1.04"
-#define CH_VERSION_NUM           0104
+#define CH_VERSION               "1.05"
+#define CH_VERSION_NUM           0105
 #endif
 
 
 /* HISTORY:
+   CH_VERSION_NUM 0105:
+   -> added CH_API_INL to specify the preferred 'inline' syntax
+   -> fixed detection of sorting errors in 'ch_xxx_dbg_check(...)'
+
    CH_VERSION_NUM 0104:
    -> added the global definition CH_ENABLE_DECLARATION_AND_DEFINITION (disabled by default, because it's faster and easier not to use it)
       Normally we generate ch_mykey_myvalue (== the type std::unordered_map<mykey,myvalue>), this way:
@@ -183,8 +191,12 @@ CH_EXTERN_C_START
 
 #include <string.h> /*memcpy,memmove,memset*/
 
-#ifndef CH_API
-#define CH_API __inline static
+#ifndef CH_API_INL  /* __inline, _inline or inline (C99) */
+#define CH_API_INL __inline
+#endif
+
+#ifndef CH_API /* can we remove 'static' here? */
+#define CH_API CH_API_INL static
 #endif
 
 #ifndef CH_ENABLE_DECLARATION_AND_DEFINITION
@@ -196,7 +208,7 @@ CH_EXTERN_C_START
 #	endif
 #else /* CH_ENABLE_DECLARATION_AND_DEFINITION */
 #	ifndef CH_API_DEC
-#		define CH_API_DEC __inline extern
+#		define CH_API_DEC CH_API_INL extern
 #	endif
 #	ifndef CH_API_DEF
 #		define CH_API_DEF /* no-op */
@@ -592,7 +604,7 @@ CH_API size_t CH_VECTOR_TYPE_FCT(_insert_key_at)(CH_VECTOR_TYPE* v,const CH_KEY_
 }
 CH_API int CH_VECTOR_TYPE_FCT(_remove_at)(CH_VECTOR_TYPE* v,size_t position,const CH_HASHTABLE_TYPE* ht)  {
     /* position is in [0,num_items) */
-    int removal_ok;size_t i;
+    int removal_ok;
     CH_ASSERT(v && ht);
     removal_ok = (position<v->size) ? 1 : 0;
     CH_ASSERT(removal_ok);	/* error: position>=v->size */
@@ -771,11 +783,11 @@ CH_API_DEF int CH_HASHTABLE_TYPE_FCT(_dbg_check)(const CH_HASHTABLE_TYPE* ht) {
                 for (j=0;j<bck->size;j++)  {
                     const CH_HASHTABLE_ITEM_TYPE* item = &bck->v[j];
                     if (last_item) {
-                        if (ht->key_cmp(&last_item->k,&item->k)>=0) {
+                        if (ht->key_cmp(&last_item->k,&item->k)<=0) {
                             /* When this happens, it can be a wrong user 'key_cmp' function (that cannot sort keys in a consistent way) */
                             ++num_sorting_errors;
 #                       ifndef CH_NO_STDIO
-                            printf("[%s] Error: in bucket[%lu]: key_cmp(%lu,%lu)<=0 [num_items=%lu (in bucket)]\n",CH_XSTR(CH_HASHTABLE_TYPE_FCT(_dbg_check)),i,j-1,j,bck->size);
+                            fprintf(stderr,"[%s] Sorting Error (%lu): in bucket[%lu]: key_cmp(%lu,%lu)>0 [num_items=%lu (in bucket)]\n",CH_XSTR(CH_HASHTABLE_TYPE_FCT(_dbg_check)),num_sorting_errors,i,j-1,j,bck->size);
 #                       endif
                         }
                     }
