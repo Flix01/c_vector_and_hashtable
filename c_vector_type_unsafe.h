@@ -30,6 +30,8 @@ freely, subject to the following restrictions:
 
    CV_DISABLE_FAKE_MEMBER_FUNCTIONS     // faster with this defined
    CV_DISABLE_CLEARING_ITEM_MEMORY      // faster with this defined
+   CV_ENABLE_DECLARATION_AND_DEFINITION // when used, C_VECTOR_TYPE_UNSAFE_IMPLEMENTATION must be
+                                        // defined before including this file in a single source (.c) file
    CV_MALLOC
    CV_REALLOC
    CV_FREE
@@ -50,8 +52,15 @@ freely, subject to the following restrictions:
 #ifndef C_VECTOR_H
 #define C_VECTOR_H
 
-#define CV_VERSION               "1.00"
-#define CV_VERSION_NUM           0100
+#define CV_VERSION               "1.01"
+#define CV_VERSION_NUM           0101
+
+/* HISTORY
+   CV_VERSION_NUM   0101
+   -> added the definitions CV_ENABLE_DECLARATION_AND_DEFINITION and C_VECTOR_TYPE_UNSAFE_IMPLEMENTATION (see above)
+
+
+*/
 
 #ifdef __cplusplus
 #   define CV_EXTERN_C_START   extern "C"  {
@@ -259,7 +268,7 @@ CV_API_DEC void cvector_create(cvector* v,size_t item_size_in_bytes,int (*item_c
 CV_EXTERN_C_END
 
 
-#if (!defined(CV_ENABLE_DECLARATION_AND_DEFINITION) || defined(C_VECTOR_AND_HASHTABLE_IMPLEMENTATION))
+#if (!defined(CV_ENABLE_DECLARATION_AND_DEFINITION) || defined(C_VECTOR_TYPE_UNSAFE_IMPLEMENTATION))
 CV_EXTERN_C_START
 
 /* cv implementation */
@@ -647,7 +656,7 @@ CV_API_DEF void cvector_create(cvector* v,size_t item_size_in_bytes,int (*item_c
 
 
 CV_EXTERN_C_END
-#endif /* (!defined(CV_ENABLE_DECLARATION_AND_DEFINITION) || defined(C_VECTOR_AND_HASHTABLE_IMPLEMENTATION)) */
+#endif /* (!defined(CV_ENABLE_DECLARATION_AND_DEFINITION) || defined(C_VECTOR_TYPE_UNSAFE_IMPLEMENTATION)) */
 
 #endif /* C_VECTOR_H */
 
