@@ -205,7 +205,7 @@ static void StringVectorTest(void) {
     */
     size_t i,position;int match=0;
     const string* p = NULL;
-    const string tmp[6]={"good morning","hello world","ciao","hi","golden day","bye bye"};
+    const char* tmp[6]={"good morning","hello world","ciao","hi","golden day","bye bye"};
 
     printf("\nSORTED STRINGVECTOR TEST:\n");
 

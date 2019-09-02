@@ -49,16 +49,19 @@ freely, subject to the following restrictions:
 */
 
 
-#ifndef C_VECTOR_H
-#define C_VECTOR_H
+#ifndef C_VECTOR_TYPE_UNSAFE_H
+#define C_VECTOR_TYPE_UNSAFE_H
 
-#define CV_VERSION               "1.01"
-#define CV_VERSION_NUM           0101
+#define CV_VERSION               "1.02"
+#define CV_VERSION_NUM           0102
 
 /* HISTORY
+   CV_VERSION_NUM   0102
+   -> changed the header guard definition to C_VECTOR_TYPE_UNSAFE_H
+   -> various changes to make this file compile correctly in c++ mode
+
    CV_VERSION_NUM   0101
    -> added the definitions CV_ENABLE_DECLARATION_AND_DEFINITION and C_VECTOR_TYPE_UNSAFE_IMPLEMENTATION (see above)
-
 
 */
 
@@ -357,9 +360,10 @@ CV_API_DEF void cvector_resize_with(cvector* v,size_t size,const void* default_v
 }
 CV_API_DEF void cvector_push_back(cvector* v,const void* value)  {
     unsigned char *v_val = NULL;const unsigned char* pvalue = (const unsigned char*)value;
+    unsigned char* p = (unsigned char*) v->v;
     CV_ASSERT(v);
-    if (v->v && value>=v->v && value<(v->v+v->size))  {
-        v_val = cvh_malloc(v->item_size_in_bytes);
+    if (p && pvalue>=p && pvalue<(p+v->size))  {
+        v_val = (unsigned char*) cvh_malloc(v->item_size_in_bytes);
 #       ifndef CV_DISABLE_CLEARING_ITEM_MEMORY
         if (v->item_ctr || v->item_cpy) memset(v_val,0,v->item_size_in_bytes);
 #		endif
@@ -430,7 +434,7 @@ CV_API_DEF size_t cvector_binary_search(const cvector* v,const void* item_to_sea
 CV_API_DEF size_t cvector_insert_range_at(cvector* v,const void* items_to_insert,size_t num_items_to_insert,size_t start_position)  {
     /* position is in [0,v->size] */
     const size_t end_position = start_position+num_items_to_insert;size_t i;
-    unsigned char* v_val=NULL;const unsigned char* pitems=items_to_insert;
+    unsigned char* v_val=NULL;const unsigned char* pitems=(const unsigned char*) items_to_insert;
     unsigned char* p;
     CV_ASSERT(v && start_position<=v->size);
     p = (unsigned char*) v->v;
@@ -562,8 +566,8 @@ CV_API_DEF void cvector_shrink_to_fit(cvector* v)	{
 }
 CV_API_DEF void cvector_dbg_check(const cvector* v)  {
     size_t j,num_sorting_errors=0;
-    const size_t mem_minimal=sizeof(cvector)+sizeof(void)*v->size;
-    const size_t mem_used=sizeof(cvector)+sizeof(void)*v->capacity;
+    const size_t mem_minimal=sizeof(cvector)+v->item_size_in_bytes*v->size;
+    const size_t mem_used=sizeof(cvector)+v->item_size_in_bytes*v->capacity;
     const double mem_used_percentage = (double)mem_used*100.0/(double)mem_minimal;
     CV_ASSERT(v);
     /* A potemtial problem here is that sometimes users set a 'v->item_cmp' without using it in a sorted vector...
@@ -658,6 +662,6 @@ CV_API_DEF void cvector_create(cvector* v,size_t item_size_in_bytes,int (*item_c
 CV_EXTERN_C_END
 #endif /* (!defined(CV_ENABLE_DECLARATION_AND_DEFINITION) || defined(C_VECTOR_TYPE_UNSAFE_IMPLEMENTATION)) */
 
-#endif /* C_VECTOR_H */
+#endif /* C_VECTOR_TYPE_UNSAFE_H */
 
 
