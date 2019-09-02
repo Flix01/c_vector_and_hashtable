@@ -71,5 +71,7 @@ c_vector_test.c
 c_hashtable_test.c
 c_vector_test
 c_hashtable_test
+c_vector_type_unsafe_main
+c_hashtable_type_unsafe_main
 
 

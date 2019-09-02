@@ -57,13 +57,16 @@ freely, subject to the following restrictions:
 #endif
 
 #ifndef CV_VERSION
-#define CV_VERSION               "1.07"
-#define CV_VERSION_NUM           0107
+#define CV_VERSION               "1.08"
+#define CV_VERSION_NUM           0108
 #endif
 
 
 
 /* HISTORY:
+   CV_VERSION_NUM 0108:
+   -> fixed an error in 'cv_xxx_insert_range_at(...)
+
    CV_VERSION_NUM 0107:
    -> added CV_API_INL to specify the preferred 'inline' syntax
    -> small fixed to 'cv_xxx_dbg_check(...)', in the part that detects sorting errors
@@ -583,7 +586,7 @@ CV_API_DEF size_t CV_VECTOR_TYPE_FCT(_insert_range_at)(CV_VECTOR_TYPE* v,const C
         }
         else	{
             if (v->item_ctr)	{for (i=0;i<num_items_to_insert;i++)   v->item_ctr(&v_val[i]);}
-            memcpy(&v_val[0],&v_val[num_items_to_insert],num_items_to_insert*sizeof(CV_TYPE));
+            memcpy(&v_val[0],&items_to_insert[0],num_items_to_insert*sizeof(CV_TYPE));
         }
         pitems = v_val;
     }
