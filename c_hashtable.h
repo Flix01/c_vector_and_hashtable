@@ -64,12 +64,15 @@ freely, subject to the following restrictions:
 #endif
 
 #ifndef CH_VERSION
-#define CH_VERSION               "1.05"
-#define CH_VERSION_NUM           0105
+#define CH_VERSION               "1.06"
+#define CH_VERSION_NUM           0106
 #endif
 
 
 /* HISTORY:
+   CH_VERSION_NUM 0106:
+   -> Fixed a potential duplicate call to key_ctr when resizing a bucket's vector.
+
    CH_VERSION_NUM 0105:
    -> added CH_API_INL to specify the preferred 'inline' syntax
    -> fixed detection of sorting errors in 'ch_xxx_dbg_check(...)'
@@ -496,7 +499,7 @@ CH_API void CH_VECTOR_TYPE_FCT(_resize)(CH_VECTOR_TYPE* v,size_t size,const CH_H
         if (ht->key_ctr || ht->key_cpy || ht->value_ctr || ht->value_cpy) memset(&v->v[v->size],0,(size-v->size)*sizeof(CH_HASHTABLE_ITEM_TYPE));
 #       endif
         if (ht->key_ctr && ht->value_ctr)   {for (i=v->size;i<size;i++) {ht->key_ctr(&v->v[i].k);ht->value_ctr(&v->v[i].v);}}
-        if (ht->key_ctr)        {for (i=v->size;i<size;i++) ht->key_ctr(&v->v[i].k);}
+        else if (ht->key_ctr)        {for (i=v->size;i<size;i++) ht->key_ctr(&v->v[i].k);}
         else if (ht->value_ctr) {for (i=v->size;i<size;i++) ht->value_ctr(&v->v[i].v);}
     }
     *((size_t*) &v->size)=size;

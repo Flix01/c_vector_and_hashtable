@@ -52,10 +52,15 @@ freely, subject to the following restrictions:
 #ifndef C_VECTOR_TYPE_UNSAFE_H
 #define C_VECTOR_TYPE_UNSAFE_H
 
-#define CV_VERSION               "1.02"
-#define CV_VERSION_NUM           0102
+#define CV_VERSION               "1.03"
+#define CV_VERSION_NUM           0103
 
 /* HISTORY
+   CV_VERSION_NUM   0103
+   -> added a specific guard for the implementation for robustness
+   -> removed unused macros CV_XSTR(...) CV_STR(...)
+   -> renamed some internal functions from 'cvh_xxx(...)' to 'cv_xxx(...)' (for example cv_malloc(...) and similar functions)
+
    CV_VERSION_NUM   0102
    -> changed the header guard definition to C_VECTOR_TYPE_UNSAFE_H
    -> various changes to make this file compile correctly in c++ mode
@@ -144,24 +149,13 @@ CV_EXTERN_C_START
 #	endif
 #endif /* CV_ENABLE_DECLARATION_AND_DEFINITION */
 
-
-#ifndef CV_XSTR
-#define CV_XSTR(s) CV_STR(s)
-#define CV_STR(s) #s
-#endif
-
-#ifndef CV_CAT 
-#	define CV_CAT(x, y) CV_CAT_(x, y)
-#	define CV_CAT_(x, y) x ## y
-#endif
-
 /* base memory helpers */
-CV_API void* cvh_malloc(size_t size) {
+CV_API void* cv_malloc(size_t size) {
     void* p = CV_MALLOC(size);
     if (!p)	{
         CV_ASSERT(0);	/* No more memory error */
 #       ifndef CV_NO_STDIO
-        fprintf(stderr,"CV_ERROR: cvh_malloc(...) failed. Not enough memory.\n");
+        fprintf(stderr,"CV_ERROR: cv_malloc(...) failed. Not enough memory.\n");
 #       endif
 #       ifndef CV_NO_STDLIB
         exit(1);
@@ -169,8 +163,8 @@ CV_API void* cvh_malloc(size_t size) {
     }
     return p;
 }
-CV_API void cvh_free(void* p)                         {CV_FREE(p);}
-CV_API void* cvh_safe_realloc(void** const ptr, size_t new_size)  {
+CV_API void cv_free(void* p)                         {CV_FREE(p);}
+CV_API void* cv_safe_realloc(void** const ptr, size_t new_size)  {
     void *ptr2 = CV_REALLOC(*ptr,new_size);
     CV_ASSERT(new_size!=0);    /* undefined behaviour */
     if (ptr2) *ptr=ptr2;
@@ -178,7 +172,7 @@ CV_API void* cvh_safe_realloc(void** const ptr, size_t new_size)  {
         CV_FREE(*ptr);*ptr=NULL;
         CV_ASSERT(0);	/* No more memory error */
 #       ifndef CV_NO_STDIO
-        fprintf(stderr,"CV_ERROR: cvh_safe_realloc(...) failed. Not enough memory.\n");
+        fprintf(stderr,"CV_ERROR: cv_safe_realloc(...) failed. Not enough memory.\n");
 #       endif
 #       ifndef CV_NO_STDLIB
         exit(1);
@@ -186,15 +180,15 @@ CV_API void* cvh_safe_realloc(void** const ptr, size_t new_size)  {
     }
     return ptr2;
 }
-CV_API void cvh_convert_bytes(size_t bytes_in,size_t pTGMKB[5])   {
+CV_API void cv_convert_bytes(size_t bytes_in,size_t pTGMKB[5])   {
     size_t i;pTGMKB[4] = bytes_in;
     for (i=0;i<4;i++)  {pTGMKB[3-i]=pTGMKB[4-i]/1024;pTGMKB[4-i]%=1024;}
 }
 #ifndef CV_NO_STDIO
-CV_API void cvh_display_bytes(size_t bytes_in)   {
+CV_API void cv_display_bytes(size_t bytes_in)   {
     size_t pTGMKB[5],i,cnt=0;
     const char* names[5] = {"TB","GB","MB","KB","Bytes"};
-    cvh_convert_bytes(bytes_in,pTGMKB);
+    cv_convert_bytes(bytes_in,pTGMKB);
     for (i=0;i<5;i++)   {
         if (pTGMKB[i]!=0) {
             if (cnt>0) printf(" ");
@@ -263,15 +257,12 @@ CV_API_DEC void cvector_create_with(cvector* v,size_t item_size_in_bytes,int (*i
 CV_API_DEC void cvector_create(cvector* v,size_t item_size_in_bytes,int (*item_cmp)(const void*,const void*));
 #endif /* CV_ENABLE_DECLARATION_AND_DEFINITION */
 
-
-#ifdef CV_ENABLE_DECLARATION_AND_DEFINITION
-/* cv function declarations */ 
-#endif /* CV_ENABLE_DECLARATION_AND_DEFINITION */
-
 CV_EXTERN_C_END
-
+#endif /* C_VECTOR_TYPE_UNSAFE_H */
 
 #if (!defined(CV_ENABLE_DECLARATION_AND_DEFINITION) || defined(C_VECTOR_TYPE_UNSAFE_IMPLEMENTATION))
+#ifndef C_VECTOR_TYPE_UNSAFE_H_IMPLEMENTATION_GUARD
+#define C_VECTOR_TYPE_UNSAFE_H_IMPLEMENTATION_GUARD
 CV_EXTERN_C_START
 
 /* cv implementation */
@@ -284,7 +275,7 @@ CV_API_DEF void cvector_free(cvector* v)	{
 				size_t i;
                 for (i=0;i<v->size;i++)	v->item_dtr((unsigned char*)v->v+i*v->item_size_in_bytes);
 			}
-			cvh_free(v->v);v->v=NULL;
+			cv_free(v->v);v->v=NULL;
 		}	
 		*((size_t*) &v->size)=0;
 		*((size_t*) &v->capacity)=0;
@@ -317,7 +308,7 @@ CV_API_DEF void cvector_reserve(cvector* v,size_t size)	{
         const size_t new_capacity = (v->capacity==0 && size>1) ?
                     size :      /* possibly keep initial user-guided 'reserve(...)' */
                     (v->capacity+(size-v->capacity)+(v->capacity)/2);   /* our growing strategy */
-        cvh_safe_realloc((void** const) &v->v,new_capacity*v->item_size_in_bytes);
+        cv_safe_realloc((void** const) &v->v,new_capacity*v->item_size_in_bytes);
         *((size_t*) &v->capacity) = new_capacity;
 	}
 }
@@ -363,7 +354,7 @@ CV_API_DEF void cvector_push_back(cvector* v,const void* value)  {
     unsigned char* p = (unsigned char*) v->v;
     CV_ASSERT(v);
     if (p && pvalue>=p && pvalue<(p+v->size))  {
-        v_val = (unsigned char*) cvh_malloc(v->item_size_in_bytes);
+        v_val = (unsigned char*) cv_malloc(v->item_size_in_bytes);
 #       ifndef CV_DISABLE_CLEARING_ITEM_MEMORY
         if (v->item_ctr || v->item_cpy) memset(v_val,0,v->item_size_in_bytes);
 #		endif
@@ -382,7 +373,7 @@ CV_API_DEF void cvector_push_back(cvector* v,const void* value)  {
 
     if (v_val) {
         if (v->item_dtr) v->item_dtr(v_val);
-        cvh_free(v_val);v_val=NULL;
+        cv_free(v_val);v_val=NULL;
     }
     *((size_t*) &v->size)=v->size+1;
 }
@@ -441,7 +432,7 @@ CV_API_DEF size_t cvector_insert_range_at(cvector* v,const void* items_to_insert
 
     if (num_items_to_insert==0) return start_position;
     if (p && (pitems+num_items_to_insert)>=p && pitems<(p+v->size))  {
-        v_val = (unsigned char*) cvh_malloc(num_items_to_insert*v->item_size_in_bytes);
+        v_val = (unsigned char*) cv_malloc(num_items_to_insert*v->item_size_in_bytes);
 #		ifndef CV_DISABLE_CLEARING_ITEM_MEMORY
         if (v->item_ctr || v->item_cpy) memset(v_val,0,num_items_to_insert*v->item_size_in_bytes);
 #		endif
@@ -483,7 +474,7 @@ CV_API_DEF size_t cvector_insert_range_at(cvector* v,const void* items_to_insert
     }
     if (v_val) {
         if (v->item_dtr)	{for (i=0;i<num_items_to_insert;i++)   v->item_dtr(p+i*v->item_size_in_bytes);}
-        cvh_free(v_val);v_val=NULL;
+        cv_free(v_val);v_val=NULL;
     }
     *((size_t*) &v->size)=v->size+num_items_to_insert;
     return start_position;
@@ -545,7 +536,7 @@ CV_API_DEF void cvector_cpy(cvector* a,const cvector* b) {
 #       endif
         return;
     }
-    /*cvh_free(a);*/
+    /*cv_free(a);*/
     cvector_clear(a);
     *((item_cmp_type*)&a->item_cmp)=b->item_cmp;
 	*((item_ctr_dtr_type*)&a->item_ctr)=b->item_ctr;
@@ -595,8 +586,8 @@ CV_API_DEF void cvector_dbg_check(const cvector* v)  {
         if (num_sorting_errors==0) printf("\tsorting: OK.\n");
         else printf("\tsorting: NO (%lu sorting errors detected).\n",num_sorting_errors);
     }
-    printf("\tmemory_used: ");cvh_display_bytes(mem_used);
-    printf(". memory_minimal_possible: ");cvh_display_bytes(mem_minimal);
+    printf("\tmemory_used: ");cv_display_bytes(mem_used);
+    printf(". memory_minimal_possible: ");cv_display_bytes(mem_minimal);
     printf(". mem_used_percentage: %1.2f%% (100%% is the best possible result).\n",mem_used_percentage);
 #   endif
     /*CV_ASSERT(num_sorting_errors==0);*/ /* When this happens, it can be a wrong user 'itemKey_cmp' function (that cannot sort keys in a consistent way) */
@@ -656,12 +647,10 @@ CV_API_DEF void cvector_create_with(cvector* v,size_t item_size_in_bytes,int (*i
 CV_API_DEF void cvector_create(cvector* v,size_t item_size_in_bytes,int (*item_cmp)(const void*,const void*))	{cvector_create_with(v,item_size_in_bytes,item_cmp,NULL,NULL,NULL);}
 
 
-/* TODO ch implementation */
-
 
 CV_EXTERN_C_END
 #endif /* (!defined(CV_ENABLE_DECLARATION_AND_DEFINITION) || defined(C_VECTOR_TYPE_UNSAFE_IMPLEMENTATION)) */
 
-#endif /* C_VECTOR_TYPE_UNSAFE_H */
+#endif /* C_VECTOR_TYPE_UNSAFE_H_IMPLEMENTATION_GUARD */
 
 

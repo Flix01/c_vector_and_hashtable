@@ -58,7 +58,7 @@ static void SimpleTest(void)   {
     };
     /* Note that initialization is not necessary when cvector_create(...) is used.
        The 5 lines above are there just to allow compilation in C++ mode
-       where we must prevent code from calling a non-existent cv::cv()
+       where we must prevent code from calling a non-existent cvector::cvector()
     */
 	const mystruct* p = NULL;	/* we'll use this to list items in a type-safe way */
 
@@ -67,7 +67,7 @@ static void SimpleTest(void)   {
 
     printf("VECTOR TEST:\n");
 
-    /* Note that we could just have initialized 'v' this way: 'cv v={0};' but
+    /* Note that we could just have initialized 'v' this way: 'cvector v={...};' but
        by using 'cvector_create(...)' we enable the 'fake member function call syntax' */
     cvector_create(&v,sizeof(mystruct),NULL);
     /* With the 'fake member function call syntax', we can make fake member calls like:
@@ -92,7 +92,7 @@ static void SimpleTest(void)   {
 #	endif*/
 
     /* display all items */
-	p = (const mystruct*) v.v;
+    p = (const mystruct*) v.v; /* of course this pointer can be reallocated and must be set soon before usage */
     for (i=0;i<v.size;i++) printf("v[%lu]={\t%d,\t%d,\t%d};\n",i,p[i].a,p[i].b,p[i].c);
 
     /* remove element 1 */
@@ -199,7 +199,7 @@ static void StringVectorTest(void) {
         0
 #       endif
     };
-    /* Note that initialization is not necessary when cv_create(...) is used.
+    /* Note that initialization is not necessary when cvector_create(...) is used.
        The 5 lines above are there just to allow compilation in C++ mode
        where we must prevent code from calling a non-existent cvector::cvector()
     */
@@ -283,7 +283,7 @@ static void big_t_cpy(void* av,const void* bv)    {
     big_t* a=(big_t*)av;
     const big_t* b=(const big_t*)bv;
     a->a=b->a;
-    cvector_cpy(&a->v,&b->v);   /* 'cv_cpy(...)' has been created by CV_DECLARE(mystruct) */
+    cvector_cpy(&a->v,&b->v);
 }
 
 
