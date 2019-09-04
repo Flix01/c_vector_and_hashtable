@@ -113,16 +113,8 @@ together with a lot of type-safe functions starting with 'cv_mystruct_'
 */
 
 static void SimpleTest(void)   {
-    cv_mystruct v                  /* a.k.a. std::vector<mystruct> */
-    = {
-#       ifndef __cplusplus
-            0
-#       endif
-    };
-    /* Note that initialization is not necessary when cv_mystruct_create(...) is used.
-       The 5 lines above are there just to allow compilation in C++ mode
-       where we must prevent code from calling a non-existent cv_mystruct::cv_mystruct()
-    */
+    cv_mystruct v;                  /* a.k.a. std::vector<mystruct> */
+    /* we skip C-style initialization, because we use 'cv_mystruct_create(...)' */
 
     mystruct tmp = {-10,200,-5};	/* tmp item used later */
     size_t i,position;int match;
@@ -251,16 +243,8 @@ static void string_cpy(string* a,const string* b)    {
 
 
 static void StringVectorTest(void) {
-    cv_string s    /* a.k.a. std::vector<string> */
-            = {
-#       ifndef __cplusplus
-        0
-#       endif
-    };
-    /* Note that initialization is not necessary when cv_string_create(...) is used.
-       The 5 lines above are there just to allow compilation in C++ mode
-       where we must prevent code from calling a non-existent cv_string::cv_string()
-    */
+    cv_string s;    /* a.k.a. std::vector<string> */
+
     size_t i,position;int match=0;
 
     printf("\nSORTED STRINGVECTOR TEST:\n");
@@ -348,23 +332,9 @@ static void big_t_cpy(big_t* a,const big_t* b)    {
 #endif /* C_VECTOR_big_t_H */
 
 static void ComplexTest(void) {
-    cv_big_t v /* a.k.a. std::vector<big_t> */
-            = {
-#       ifndef __cplusplus
-        0
-#       endif
-    };
-    /* Note that initialization is not necessary when cv_string_create(...) is used.
-       The 5 lines above are there just to allow compilation in C++ mode
-       where we must prevent code from calling a non-existent cv_string::cv_string()
-    */
+    cv_big_t v; /* a.k.a. std::vector<big_t> */
 
-    big_t tmp = /* a tmp item */
-    #   ifndef __cplusplus
-        {0}; /* even if in plain C initialization is not necessary in this case */
-    #   else
-        {}; /* stackoverflow says: {0} is good for c, {} for c++ */
-    #   endif
+    big_t tmp;
     mystruct ts = {1,2,3};  /* a tmp item for 'tmp.v' */
     size_t i,j;
 

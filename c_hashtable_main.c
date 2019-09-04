@@ -16,11 +16,6 @@ cl /O2 /MT /Tc c_hashtable_main.c /link /out:c_hashtable_main.exe user32.lib ker
 gcc -O2 -x c++ -no-pie -fno-pie c_hashtable_main.c -o c_hashtable_main
 // or just
 g++ -O2 -no-pie -fno-pie c_hashtable_main.c -o c_hashtable_main
-
-//-----------------------------------------------
-// C++ COMPILATION DOES NOT SEEM TO WORK FOR ME!
-//-----------------------------------------------
-and I'm not goint to fix it!
 */
 
 /* Program Output:
@@ -132,8 +127,7 @@ static __inline ch_hash_uint mykey_hash(const mykey* k) {
 }
 
 static void SimpleTest(void)    {
-    /* Note that initialization is MANDATORY (or you can use 'cv_mystruct_create(...)') */
-    ch_mykey_myvalue ht;
+    ch_mykey_myvalue ht;/* we'll use 'ch_mykey_myvalue_create(...)' for init, so we skip C-style initialization */
     mykey tmpkey = {-10,200,-5};	/* tmp key used later */
     myvalue* fetched_value=NULL;
     size_t i,k,j;int match;
@@ -311,15 +305,15 @@ static void StringStringTest(void)  {
                                     1);
 
     /* this inserts: ht["name"]="John"; */
-    string_setter(ch_string_string_get_or_insert_by_val(&ht,"name",0),"John");
+    string_setter(ch_string_string_get_or_insert_by_val(&ht,(string)"name",0),"John");  /* the (string) cast is there just to remove a warning when compiled in c++ mode */
     /* this inserts: ht["profession"]="plumber"; */
-    string_setter(ch_string_string_get_or_insert_by_val(&ht,"profession",0),"plumber");
+    string_setter(ch_string_string_get_or_insert_by_val(&ht,(string)"profession",0),"plumber");
     /* this inserts: ht["brother"]="Eddie Duke of the Hills"; */
-    string_setter(ch_string_string_get_or_insert_by_val(&ht,"brother",0),"Eddie Duke of the Hills");
+    string_setter(ch_string_string_get_or_insert_by_val(&ht,(string)"brother",0),"Eddie Duke of the Hills");
     /* this inserts: ht["gender"]="male"; */
-    string_setter(ch_string_string_get_or_insert_by_val(&ht,"gender",0),"male");
+    string_setter(ch_string_string_get_or_insert_by_val(&ht,(string)"gender",0),"male");
     /* this inserts: ht["very famous nickname"]="Super Johnny"; */
-    string_setter(ch_string_string_get_or_insert_by_val(&ht,"very famous nickname",0),"Super Johnny");
+    string_setter(ch_string_string_get_or_insert_by_val(&ht,(string)"very famous nickname",0),"Super Johnny");
 
     /* Display all entries (in general they are not sorted) */
     k=0;printf("All items (generally unsorted):\n");
@@ -337,7 +331,7 @@ static void StringStringTest(void)  {
     ch_string_string_dbg_check(&ht);
 
     /* remove one item */
-    if (ch_string_string_remove_by_val(&ht,"gender")) printf("Removed item with key \"gender\".\n");
+    if (ch_string_string_remove_by_val(&ht,(string)"gender")) printf("Removed item with key \"gender\".\n");
     else printf("Can't remove item with key \"gender\", because it's not present.\n");
 
     /* Display all entries (in general they are not sorted) */
@@ -352,7 +346,7 @@ static void StringStringTest(void)  {
     }
 
     /* Just fetch 'tmpkey', without inserting it if not found (this call can return NULL) */
-    value = ch_string_string_get_by_val(&ht,"name");
+    value = ch_string_string_get_by_val(&ht,(string)"name");
     if (!value)  {
         /* item is not present */
         printf("An item with key \"name\" is NOT present.\n");

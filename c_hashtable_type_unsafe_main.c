@@ -16,11 +16,6 @@ cl /O2 /MT /Tc c_hashtable_type_unsafe_main.c /link /out:c_hashtable_type_unsafe
 gcc -O2 -x c++ -no-pie -fno-pie c_hashtable_type_unsafe_main.c -o c_hashtable_type_unsafe_main
 // or just
 g++ -O2 -no-pie -fno-pie c_hashtable_type_unsafe_main.c -o c_hashtable_type_unsafe_main
-
-//-----------------------------------------------
-// C++ COMPILATION DOES NOT SEEM TO WORK FOR ME!
-//-----------------------------------------------
-and I'm not goint to fix it! (tip: we can try taking away the 'static' from CH_API and see if that improves things)
 */
 
 /* Program Output:
@@ -94,15 +89,14 @@ static int mykey_cmp(const void* av,const void* bv) {
 static __inline ch_hash_uint mykey_hash(const void* kv) {
 	const mykey* k = (const mykey*) kv;
     return ((k->a)
-#   if CH_NUM_BUCKETS!=CH_MAX_NUM_BUCKETS /* otherwise mod is unnecessary */
-    %CH_NUM_BUCKETS /* CH_MAX_NUM_BUCKETS can be 256 or 65536, but must be set globally (i.e. in Project Options) */
+#   if CH_NUM_USED_BUCKETS!=CH_MAX_POSSIBLE_NUM_BUCKETS /* otherwise mod is unnecessary */
+        %CH_NUM_USED_BUCKETS /* CH_MAX_POSSIBLE_NUM_BUCKETS is READ-ONLY and can be 256 or 65536, or 2147483648 (it depends on CH_NUM_USED_BUCKETS, and the type 'ch_hash_uint' depends on it) */
 #   endif
     );
 }
 
 static void SimpleTest(void)    {
-    /* Note that initialization is MANDATORY (or you can use 'cv_mystruct_create(...)') */
-    chashtable ht;
+    chashtable ht; /* we'll use 'chashtable_create(...)' for init; so we can skip here a C-style init */
     mykey tmpkey = {-10,200,-5};	/* tmp key used later */
     myvalue* fetched_value=NULL;
     size_t i,k,j;int match;
@@ -123,7 +117,7 @@ static void SimpleTest(void)    {
 
     /* Fetch 'tmpkey', and, if not found, insert it and give it a 'value' */
     tmpkey.a = 100;tmpkey.b = 50;tmpkey.c = 25;    /* we don't need to set 'value' here */
-    fetched_value = chashtable_get_or_insert(&ht,&tmpkey,&match);CH_ASSERT(fetched_value);
+    fetched_value = (myvalue*) chashtable_get_or_insert(&ht,&tmpkey,&match);CH_ASSERT(fetched_value);   /* casting to (myvalue*) is there just to allow compilation in c++ mode */
     if (!match)  {
         /* item was not present, so we assign 'value' */
         strcpy(fetched_value->name,"100-50-25");
@@ -146,7 +140,7 @@ static void SimpleTest(void)    {
 
     /* Fetch 'tmpkey', and, if not found, insert it and give it a 'value' */
     tmpkey.a = 5;tmpkey.b = 43;tmpkey.c = 250;
-    fetched_value = chashtable_get_or_insert(&ht,&tmpkey,&match);CH_ASSERT(fetched_value);
+    fetched_value = (myvalue*) chashtable_get_or_insert(&ht,&tmpkey,&match);CH_ASSERT(fetched_value);
     if (!match)  {
         /* item was not present, so we assign 'value' */
         strcpy(fetched_value->name,"5-43-250");
@@ -157,7 +151,7 @@ static void SimpleTest(void)    {
 
     /* Fetch 'tmpkey', and, if not found, insert it and give it a 'value' */
     tmpkey.a = 10;tmpkey.b = 250;tmpkey.c = 125;
-    fetched_value = chashtable_get_or_insert(&ht,&tmpkey,&match);CH_ASSERT(fetched_value);
+    fetched_value = (myvalue*) chashtable_get_or_insert(&ht,&tmpkey,&match);CH_ASSERT(fetched_value);
     if (!match)  {
         /* item was not present, so we assign 'value' */
         strcpy(fetched_value->name,"10-250-125");
@@ -167,7 +161,7 @@ static void SimpleTest(void)    {
     printf("item ht[\t%d,\t%d,\t%d]\t=\t[\"%s\"].\n",tmpkey.a,tmpkey.b,tmpkey.c,fetched_value->name);
 
     /* Just fetch 'tmpkey', without inserting it if not found (this call can return NULL) */
-    fetched_value = chashtable_get(&ht,&tmpkey);
+    fetched_value = (myvalue*) chashtable_get(&ht,&tmpkey);
     if (!fetched_value)  {
         /* item is not present */
         printf("An item with key[\t%d,\t%d,\t%d] is NOT present.\n",tmpkey.a,tmpkey.b,tmpkey.c);
@@ -177,7 +171,7 @@ static void SimpleTest(void)    {
 
     /* Display all entries (in general they are not sorted) */
     k=0;printf("All items (generally unsorted):\n");
-    for (i=0;i<CH_NUM_BUCKETS;i++)	{
+    for (i=0;i<CH_NUM_USED_BUCKETS;i++)	{
         const chvector* bucket = &ht.buckets[i];
         const mykey* keys   = (const mykey*) bucket->k; /* of course these pointers can be reallocated and must be set soon before usage */
         const myvalue* values = (const myvalue*) bucket->v;
@@ -188,13 +182,15 @@ static void SimpleTest(void)    {
             printf("%lu) ht[\t%d,\t%d,\t%d]\t=\t[\"%s\"].\n",k++,key->a,key->b,key->c,(val&&val->name)?val->name:"NULL");
         }
     }
+    /* CH_NUM_USED_BUCKETS can be set globally, and it's equivalent to: */
+    CH_ASSERT(CH_NUM_USED_BUCKETS==sizeof(chvectors)/sizeof(chvector));
 
     /* Remove 'tmpkey' */
     if (chashtable_remove(&ht,&tmpkey)) printf("Removed item [\t%d,\t%d,\t%d]\n",tmpkey.a,tmpkey.b,tmpkey.c);
     else printf("Can't remove item [\t%d,\t%d,\t%d], because it's not present.\n",tmpkey.a,tmpkey.b,tmpkey.c);
 
     /* Just fetch 'tmpkey', without inserting it if not found (this call can return NULL) */
-    fetched_value = chashtable_get(&ht,&tmpkey);
+    fetched_value = (myvalue*) chashtable_get(&ht,&tmpkey);
     if (!fetched_value)  {
         /* item is not present */
         printf("An item with key[\t%d,\t%d,\t%d] is NOT present.\n",tmpkey.a,tmpkey.b,tmpkey.c);
@@ -203,7 +199,7 @@ static void SimpleTest(void)    {
 
     /* Display all entries (in general they are not sorted) */
     k=0;printf("All items (generally unsorted):\n");
-    for (i=0;i<CH_NUM_BUCKETS;i++)	{
+    for (i=0;i<CH_NUM_USED_BUCKETS;i++)	{
         const chvector* bucket = &ht.buckets[i];
         const mykey* keys   = (const mykey*) bucket->k;
         const myvalue* values = (const myvalue*) bucket->v;
@@ -259,8 +255,8 @@ static __inline ch_hash_uint string_hash(const void* kv) {
                  strlen(*k)     /* naive hash but calculation is much faster */
 #   endif
                : 0)
-#   if CH_NUM_BUCKETS!=CH_MAX_NUM_BUCKETS /* otherwise mod is unnecessary */
-    %CH_NUM_BUCKETS /* CH_MAX_NUM_BUCKETS can be 256 or 65536, but must be set globally (i.e. in Project Options) */
+#   if CH_NUM_USED_BUCKETS!=CH_MAX_POSSIBLE_NUM_BUCKETS /* otherwise mod is unnecessary */
+    %CH_NUM_USED_BUCKETS /*  CH_MAX_POSSIBLE_NUM_BUCKETS is READ-ONLY and can be 256 or 65536, or 2147483648 (it depends on CH_NUM_USED_BUCKETS, and the type 'ch_hash_uint' depends on it) */
 #   endif
     );
 }
@@ -282,19 +278,19 @@ static void StringStringTest(void)  {
        but we need real addresses. That's why we've used 'tmp' here */
 
     /* this inserts: ht["name"]="John"; */
-    string_setter(chashtable_get_or_insert(&ht,&tmp[0],0),"John");
+    string_setter((string*)chashtable_get_or_insert(&ht,&tmp[0],0),"John"); /* (string*) cast is there just to allow compilation in c++ mode */
     /* this inserts: ht["profession"]="plumber"; */
-    string_setter(chashtable_get_or_insert(&ht,&tmp[1],0),"plumber");
+    string_setter((string*)chashtable_get_or_insert(&ht,&tmp[1],0),"plumber");
     /* this inserts: ht["brother"]="Eddie Duke of the Hills"; */
-    string_setter(chashtable_get_or_insert(&ht,&tmp[2],0),"Eddie Duke of the Hills");
+    string_setter((string*)chashtable_get_or_insert(&ht,&tmp[2],0),"Eddie Duke of the Hills");
     /* this inserts: ht["gender"]="male"; */
-    string_setter(chashtable_get_or_insert(&ht,&tmp[3],0),"male");
+    string_setter((string*)chashtable_get_or_insert(&ht,&tmp[3],0),"male");
     /* this inserts: ht["very famous nickname"]="Super Johnny"; */
-    string_setter(chashtable_get_or_insert(&ht,&tmp[4],0),"Super Johnny");
+    string_setter((string*)chashtable_get_or_insert(&ht,&tmp[4],0),"Super Johnny");
 
     /* Display all entries (in general they are not sorted) */
     k=0;printf("All items (generally unsorted):\n");
-    for (i=0;i<CH_NUM_BUCKETS;i++)	{
+    for (i=0;i<CH_NUM_USED_BUCKETS;i++)	{
         const chvector* bucket = &ht.buckets[i];
         const string* keys = (const string*) bucket->k; /* of course these pointers can be reallocated and must be set soon before usage */
         const string* values = (const string*) bucket->v;
@@ -316,7 +312,7 @@ static void StringStringTest(void)  {
 
     /* Display all entries (in general they are not sorted) */
     k=0;printf("All items (generally unsorted):\n");
-    for (i=0;i<CH_NUM_BUCKETS;i++)	{
+    for (i=0;i<CH_NUM_USED_BUCKETS;i++)	{
         const chvector* bucket = &ht.buckets[i];
         const string* keys = (const string*) bucket->k;
         const string* values = (const string*) bucket->v;
@@ -329,7 +325,7 @@ static void StringStringTest(void)  {
     }
 
     /* Just fetch 'tmpkey', without inserting it if not found (this call can return NULL) */
-    value = chashtable_get(&ht,&tmp[0]);
+    value = (string*)chashtable_get(&ht,&tmp[0]);
     if (!value)  {
         /* item is not present */
         printf("An item with key \"%s\" is NOT present.\n",tmp[0]);

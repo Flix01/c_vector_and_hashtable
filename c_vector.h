@@ -56,14 +56,21 @@ freely, subject to the following restrictions:
 #error Please define CV_TYPE
 #endif
 
-#ifndef CV_VERSION
-#define CV_VERSION               "1.08"
-#define CV_VERSION_NUM           0108
+#ifndef C_VECTOR_VERSION
+#define C_VECTOR_VERSION        "1.09"
+#define C_VECTOR_VERSION_NUM    0109
 #endif
 
 
 
 /* HISTORY:
+   C_VECTOR_VERSION_NUM 0109:
+   -> renamed CV_VERSION to C_VECTOR_VERSION
+   -> renamed CV_VERSION_NUM to C_VECTOR_VERSION_NUM
+   -> some internal changes to minimize interference with (the type-unsafe version) "c_vector_type_unsafe.h",
+      hoping that they can both cohexist in the same project.
+   -> added a ctr to ease compilation in c++ mode
+
    CV_VERSION_NUM 0108:
    -> fixed an error in 'cv_xxx_insert_range_at(...)
 
@@ -147,6 +154,10 @@ freely, subject to the following restrictions:
 */
 
 /* ------------------------------------------------- */
+#undef CV_EXTERN_C_START
+#undef CV_EXTERN_C_END
+#undef CV_DEFAULT_STRUCT_INIT
+
 #ifdef __cplusplus
 #   undef CV_EXTERN_C_START
 #   define CV_EXTERN_C_START   extern "C"  {
@@ -286,6 +297,11 @@ struct CV_VECTOR_TYPE {
     void (* const cpy)(CV_VECTOR_TYPE* a,const CV_VECTOR_TYPE* b);
     void (* const dbg_check)(const CV_VECTOR_TYPE* v);
 #   endif
+
+#   ifdef __cplusplus
+    CV_VECTOR_TYPE();
+#   endif
+
 };
 #ifdef CV_ENABLE_DECLARATION_AND_DEFINITION
 /* function declarations */ 
@@ -318,8 +334,8 @@ CV_API_DEC void CV_VECTOR_TYPE_FCT(_create)(CV_VECTOR_TYPE* v,int (*item_cmp)(co
 #endif /* CV_ENABLE_DECLARATION_AND_DEFINITION */
 #endif /*  (!defined(CV_ENABLE_DECLARATION_AND_DEFINITION) || !defined(C_VECTOR_IMPLEMENTATION) || defined(C_VECTOR_FORCE_DECLARATION)) */
 
-#ifndef CV_PRIV_FUNCTIONS
-#define CV_PRIV_FUNCTIONS
+#ifndef CV_COMMON_FUNCTIONS_GUARD
+#define CV_COMMON_FUNCTIONS_GUARD
 /* base memory helpers */
 CV_API void* cv_malloc(size_t size) {
     void* p = CV_MALLOC(size);
@@ -355,7 +371,7 @@ CV_API void cv_convert_bytes(size_t bytes_in,size_t pTGMKB[5])   {
     size_t i;pTGMKB[4] = bytes_in;
     for (i=0;i<4;i++)  {pTGMKB[3-i]=pTGMKB[4-i]/1024;pTGMKB[4-i]%=1024;}
 }
-#   ifndef CV_NO_STDIO
+#ifndef CV_NO_STDIO
 CV_API void cv_display_bytes(size_t bytes_in)   {
     size_t pTGMKB[5],i,cnt=0;
     const char* names[5] = {"TB","GB","MB","KB","Bytes"};
@@ -368,8 +384,8 @@ CV_API void cv_display_bytes(size_t bytes_in)   {
         }
     }
 }
-#   endif
-#endif /* CV_PRIV_FUNCTIONS */
+#endif /* CV_NO_STDIO */
+#endif /* CV_COMMON_FUNCTIONS_GUARD */
 
 
 #if (!defined(CV_ENABLE_DECLARATION_AND_DEFINITION) || defined(C_VECTOR_IMPLEMENTATION))
@@ -782,6 +798,26 @@ CV_API_DEF void CV_VECTOR_TYPE_FCT(_create_with)(CV_VECTOR_TYPE* v,int (*item_cm
 #   endif
 }
 CV_API_DEF void CV_VECTOR_TYPE_FCT(_create)(CV_VECTOR_TYPE* v,int (*item_cmp)(const CV_CMP_TYPE*,const CV_CMP_TYPE*))  {CV_VECTOR_TYPE_FCT(_create_with)(v,item_cmp,NULL,NULL,NULL);}
+
+#   ifdef __cplusplus
+    CV_VECTOR_TYPE::CV_VECTOR_TYPE() :
+    v(NULL),size(0),capacity(0),
+    item_ctr(NULL),item_dtr(NULL),item_cpy(NULL),item_cmp(NULL),
+    free(&CV_VECTOR_TYPE_FCT(_free)),clear(&CV_VECTOR_TYPE_FCT(_clear)),shrink_to_fit(&CV_VECTOR_TYPE_FCT(_shrink_to_fit)),
+    swap(&CV_VECTOR_TYPE_FCT(_swap)),reserve(&CV_VECTOR_TYPE_FCT(_reserve)),
+    resize(&CV_VECTOR_TYPE_FCT(_resize)),resize_with(&CV_VECTOR_TYPE_FCT(_resize_with)),resize_with_by_val(&CV_VECTOR_TYPE_FCT(_resize_with_by_val)),
+    push_back(&CV_VECTOR_TYPE_FCT(_push_back)),push_back_by_val(&CV_VECTOR_TYPE_FCT(_push_back_by_val)),pop_back(&CV_VECTOR_TYPE_FCT(_pop_back)),
+    linear_search(&CV_VECTOR_TYPE_FCT(_linear_search)),linear_search_by_val(&CV_VECTOR_TYPE_FCT(_linear_search_by_val)),
+    binary_search(&CV_VECTOR_TYPE_FCT(_binary_search)),binary_search_by_val(&CV_VECTOR_TYPE_FCT(_binary_search_by_val)),
+    insert_at(&CV_VECTOR_TYPE_FCT(_insert_at)),insert_at_by_val(&CV_VECTOR_TYPE_FCT(_insert_at_by_val)),
+    insert_range_at(&CV_VECTOR_TYPE_FCT(_insert_range_at)),
+    insert_sorted(&CV_VECTOR_TYPE_FCT(_insert_sorted)),insert_sorted_by_val(&CV_VECTOR_TYPE_FCT(_insert_sorted_by_val)),
+    remove_at(&CV_VECTOR_TYPE_FCT(_remove_at)),remove_range_at(&CV_VECTOR_TYPE_FCT(_remove_range_at)),
+    cpy(&CV_VECTOR_TYPE_FCT(_cpy)),dbg_check(&CV_VECTOR_TYPE_FCT(_dbg_check))
+    {}
+#   endif
+
+
 #endif /* (!defined(CV_ENABLE_DECLARATION_AND_DEFINITION) || defined(C_VECTOR_IMPLEMENTATION)) */
 
 #undef CV_VECTOR_TYPE_FCT

@@ -52,10 +52,17 @@ freely, subject to the following restrictions:
 #ifndef C_VECTOR_TYPE_UNSAFE_H
 #define C_VECTOR_TYPE_UNSAFE_H
 
-#define CV_VERSION               "1.03"
-#define CV_VERSION_NUM           0103
+#define C_VECTOR_TYPE_UNSAFE_VERSION            "1.04"
+#define C_VECTOR_TYPE_UNSAFE_VERSION_NUM        0104
 
 /* HISTORY
+   C_VECTOR_TYPE_UNSAFE_VERSION_NUM 104
+   -> renamed CV_VERSION to C_VECTOR_TYPE_UNSAFE_VERSION
+   -> renamed CV_VERSION_NUM to C_VECTOR_TYPE_UNSAFE_VERSION_NUM
+   -> some internal changes to minimize interference with (the type-safe version) "c_vector.h",
+      hoping that they can both cohexist in the same project.
+   -> added ctr to ease compilation in c++ mode
+
    CV_VERSION_NUM   0103
    -> added a specific guard for the implementation for robustness
    -> removed unused macros CV_XSTR(...) CV_STR(...)
@@ -69,6 +76,10 @@ freely, subject to the following restrictions:
    -> added the definitions CV_ENABLE_DECLARATION_AND_DEFINITION and C_VECTOR_TYPE_UNSAFE_IMPLEMENTATION (see above)
 
 */
+
+#undef CV_EXTERN_C_START
+#undef CV_EXTERN_C_END
+#undef CV_DEFAULT_STRUCT_INIT
 
 #ifdef __cplusplus
 #   define CV_EXTERN_C_START   extern "C"  {
@@ -149,6 +160,8 @@ CV_EXTERN_C_START
 #	endif
 #endif /* CV_ENABLE_DECLARATION_AND_DEFINITION */
 
+#ifndef CV_COMMON_FUNCTIONS_GUARD
+#define CV_COMMON_FUNCTIONS_GUARD
 /* base memory helpers */
 CV_API void* cv_malloc(size_t size) {
     void* p = CV_MALLOC(size);
@@ -197,8 +210,8 @@ CV_API void cv_display_bytes(size_t bytes_in)   {
         }
     }
 }
-#endif
-
+#endif /* CV_NO_STDIO */
+#endif /* CV_COMMON_FUNCTIONS_GUARD */
 
 typedef struct cvector cvector;
 struct cvector {
@@ -231,6 +244,10 @@ struct cvector {
     int (* const remove_range_at)(cvector* v,size_t start_item_position,size_t num_items_to_remove);
     void (* const cpy)(cvector* a,const cvector* b);
     void (* const dbg_check)(const cvector* v);
+#   endif
+
+#   ifdef __cplusplus
+    cvector();
 #   endif
 };
 #ifdef CV_ENABLE_DECLARATION_AND_DEFINITION
@@ -646,7 +663,19 @@ CV_API_DEF void cvector_create_with(cvector* v,size_t item_size_in_bytes,int (*i
 }
 CV_API_DEF void cvector_create(cvector* v,size_t item_size_in_bytes,int (*item_cmp)(const void*,const void*))	{cvector_create_with(v,item_size_in_bytes,item_cmp,NULL,NULL,NULL);}
 
-
+#ifdef __cplusplus
+    cvector::cvector() :
+    v(NULL),size(0),capacity(0),item_size_in_bytes(0),
+    item_cmp(NULL),item_ctr(NULL),item_dtr(NULL),item_cpy(NULL),
+    free(&cvector_free),clear(&cvector_clear),shrink_to_fit(&cvector_shrink_to_fit),swap(&cvector_swap),
+    reserve(&cvector_reserve),resize(&cvector_resize),resize_with(&cvector_resize_with),
+    push_back(&cvector_push_back),pop_back(&cvector_pop_back),
+    linear_search(&cvector_linear_search),binary_search(&cvector_binary_search),
+    insert_at(&cvector_insert_at),insert_range_at(&cvector_insert_range_at),insert_sorted(&cvector_insert_sorted),
+    remove_at(&cvector_remove_at),remove_range_at(&cvector_remove_range_at),
+    cpy(&cvector_cpy),dbg_check(&cvector_dbg_check)
+    {}
+#endif
 
 CV_EXTERN_C_END
 #endif /* (!defined(CV_ENABLE_DECLARATION_AND_DEFINITION) || defined(C_VECTOR_TYPE_UNSAFE_IMPLEMENTATION)) */

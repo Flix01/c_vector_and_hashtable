@@ -50,16 +50,9 @@ static int mystruct_cmp(const void* av,const void* bv) {
 
 
 static void SimpleTest(void)   {
-    cvector v                  /* a.k.a. std::vector<mystruct> */
-    = {
-#       ifndef __cplusplus
-            0
-#       endif
-    };
-    /* Note that initialization is not necessary when cvector_create(...) is used.
-       The 5 lines above are there just to allow compilation in C++ mode
-       where we must prevent code from calling a non-existent cvector::cvector()
-    */
+    cvector v;                  /* a.k.a. std::vector<mystruct> */
+    /* we skip C-style initialization because we'll use 'cvector_create(...)' later */
+
 	const mystruct* p = NULL;	/* we'll use this to list items in a type-safe way */
 
     mystruct tmp = {-10,200,-5};	/* tmp item used later */
@@ -193,16 +186,8 @@ static void string_cpy(void* av,const void* bv)    {
 
 
 static void StringVectorTest(void) {
-    cvector s    /* a.k.a. std::vector<string> */
-            = {
-#       ifndef __cplusplus
-        0
-#       endif
-    };
-    /* Note that initialization is not necessary when cvector_create(...) is used.
-       The 5 lines above are there just to allow compilation in C++ mode
-       where we must prevent code from calling a non-existent cvector::cvector()
-    */
+    cvector s;    /* a.k.a. std::vector<string> */
+
     size_t i,position;int match=0;
     const string* p = NULL;
     const char* tmp[6]={"good morning","hello world","ciao","hi","golden day","bye bye"};
@@ -288,24 +273,11 @@ static void big_t_cpy(void* av,const void* bv)    {
 
 
 static void ComplexTest(void) {
-    cvector v /* a.k.a. std::vector<big_t> */
-            = {
-#       ifndef __cplusplus
-        0
-#       endif
-    };
-    /* Note that initialization is not necessary when cvector_create(...) is used.
-       The 5 lines above are there just to allow compilation in C++ mode
-       where we must prevent code from calling a non-existent cvector::cvector()
-    */
+    cvector v; /* a.k.a. std::vector<big_t> */
+
     const big_t* pb = NULL;
 
-    big_t tmp = /* a tmp item */
-    #   ifndef __cplusplus
-        {0}; /* even if in plain C initialization is not necessary in this case */
-    #   else
-        {}; /* stackoverflow says: {0} is good for c, {} for c++ */
-    #   endif
+    big_t tmp;
     mystruct ts = {1,2,3};  /* a tmp item for 'tmp.v' */
     const mystruct* pm=NULL;
     size_t i,j;

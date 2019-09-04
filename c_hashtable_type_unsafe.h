@@ -28,9 +28,9 @@ freely, subject to the following restrictions:
    GLOBAL DEFINITIONS: The following definitions (when used) must be set
    globally (= in the Project Options or in a StdAfx.h file):
 
-   CH_NUM_BUCKETS                       // (defaults to 256)
-   CH_MAX_NUM_BUCKETS                   // must be 256, 65536 or 2147483648 and defines ch_hash_uint as unsigned char, unsigned short or unsigned int
-                                        // (while it could seem redundant now, it is handy to use it inside hash functions to see if we need a mod (%CH_NUM_BUCKETS) or not)
+   CH_NUM_USED_BUCKETS                  // (defaults to 256)
+   CH_MAX_POSSIBLE_NUM_BUCKETS          // [READ-ONLY definition] It can be 256, 65536 or 2147483648 and defines 'ch_hash_uint' as 'unsigned char', 'unsigned short' or 'unsigned int'
+                                        // (while it could seem redundant, it is handy to use it inside hash functions to see if we need a mod (%CH_NUM_USED_BUCKETS) or not)
    CH_DISABLE_FAKE_MEMBER_FUNCTIONS     // faster with this defined
    CH_DISABLE_CLEARING_ITEM_MEMORY      // faster with this defined
    CH_ENABLE_DECLARATION_AND_DEFINITION // when used, C_HASHTABLE_TYPE_UNSAFE_IMPLEMENTATION must be
@@ -52,11 +52,25 @@ freely, subject to the following restrictions:
 #ifndef C_HASHTABLE_TYPE_UNSAFE_H
 #define C_HASHTABLE_TYPE_UNSAFE_H
 
-#define CH_VERSION               "1.00"
-#define CH_VERSION_NUM           0100
+#define C_HASHTABLE_TYPE_UNSAFE_VERSION         "1.01"
+#define C_HASHTABLE_TYPE_UNSAFE_VERSION_NUM     0101
 
-/* HISTORY
+/* HISTORY:
+   C_HASHTABLE_TYPE_UNSAFE_VERSION_NUM  101
+   -> renamed CH_VERSION to C_HASHTABLE_TYPE_UNSAFE_VERSION
+   -> renamed CH_VERSION_NUM to C_HASHTABLE_TYPE_UNSAFE_VERSION_NUM
+   -> some internal changes to minimize interference with (the type-safe version) "c_hashtable.h",
+      hoping that they can both cohexist in the same project.
+   -> renamed CH_NUM_BUCKETS to CH_NUM_USED_BUCKETS
+   -> renamed CH_MAX_NUM_BUCKETS to CH_MAX_POSSIBLE_NUM_BUCKETS [and now it's READ-ONLY!]
+   -> removed some commented out code
+   -> made some changes to allow compilation in c++ mode
+   -> added a hashtable ctr to ease compilation in c++ mode
 */
+
+#undef CH_EXTERN_C_START
+#undef CH_EXTERN_C_END
+#undef CH_DEFAULT_STRUCT_INIT
 
 #ifdef __cplusplus
 #   define CH_EXTERN_C_START   extern "C"  {
@@ -137,6 +151,9 @@ CH_EXTERN_C_START
 #	endif
 #endif /* CH_ENABLE_DECLARATION_AND_DEFINITION */
 
+
+#ifndef CH_COMMON_FUNCTIONS_GUARD
+#define CH_COMMON_FUNCTIONS_GUARD
 /* base memory helpers */
 CH_API void* ch_malloc(size_t size) {
     void* p = CH_MALLOC(size);
@@ -185,7 +202,7 @@ CH_API void ch_display_bytes(size_t bytes_in)   {
         }
     }
 }
-#endif
+#endif /* CH_NO_STDIO */
 
 /* from https://en.wikipedia.org/wiki/MurmurHash
    Warning: it returns unsigned int and works for little-endian CPUs only
@@ -226,50 +243,33 @@ CH_API unsigned ch_hash_murmur3(const unsigned char* key, size_t len, unsigned s
     h ^= h >> 16;
     return h;
 }
+#endif /* CH_COMMON_FUNCTIONS_GUARD */
 
-
-#ifndef CH_MAX_NUM_BUCKETS  /* This MUST be 256, 65536 or 2147483648 and can be set only in the project options (not at each header inclusion) */
-#   define CH_MAX_NUM_BUCKETS 256
+#ifndef CH_NUM_USED_BUCKETS
+#   define CH_NUM_USED_BUCKETS 256
+#endif
+#if CH_NUM_USED_BUCKETS<0
+#   undef CH_NUM_USED_BUCKETS
+#   define CH_NUM_USED_BUCKETS 256
+#elif CH_NUM_USED_BUCKETS>2147483648
+#   undef CH_NUM_USED_BUCKETS
+#   define CH_NUM_USED_BUCKETS 2147483648
 #endif
 
-
-
-#ifndef CH_HASH_TYPE_DEFINED    /* internal usage */
-#   define CH_HASH_TYPE_DEFINED
-#   if CH_MAX_NUM_BUCKETS<=0
-#       error CH_MAX_NUM_BUCKETS must be positive.
-#   elif CH_MAX_NUM_BUCKETS<=256
-#       undef CH_MAX_NUM_BUCKETS
-#       define CH_MAX_NUM_BUCKETS 256
-        typedef unsigned char ch_hash_uint;
-#   elif CH_MAX_NUM_BUCKETS<=65536
-#       undef CH_MAX_NUM_BUCKETS
-#       define CH_MAX_NUM_BUCKETS 65536
-        typedef unsigned short ch_hash_uint;
-#   elif CH_MAX_NUM_BUCKETS<=2147483648
-#       undef CH_MAX_NUM_BUCKETS
-#       define CH_MAX_NUM_BUCKETS 2147483648
-        typedef unsigned int ch_hash_uint;
+/* Here we set CH_MAX_POSSIBLE_NUM_BUCKETS. It can be only be 256, 65536 or 2147483648 and determinates 'ch_hash_uint' */
+#undef CH_MAX_POSSIBLE_NUM_BUCKETS
+#if CH_NUM_USED_BUCKETS<=256
+#   define CH_MAX_POSSIBLE_NUM_BUCKETS 256
+    typedef unsigned char ch_hash_uint;
+#elif CH_NUM_USED_BUCKETS<=65536
+#   define CH_MAX_POSSIBLE_NUM_BUCKETS 65536
+    typedef unsigned short ch_hash_uint;
+#elif CH_NUM_USED_BUCKETS<=2147483648
+#   define CH_MAX_POSSIBLE_NUM_BUCKETS 2147483648
+    typedef unsigned int ch_hash_uint;
 #   else
-#       error CH_MAX_NUM_BUCKETS cannot be bigger than 2147483648.
+#   error CH_NUM_USED_BUCKETS cannot be bigger than 2147483648.
 #   endif
-#endif
-
-#ifndef CH_NUM_BUCKETS
-#   define CH_NUM_BUCKETS CH_MAX_NUM_BUCKETS
-#endif
-
-#if CH_NUM_BUCKETS<=0
-#   error CH_NUM_BUCKETS must be positive.
-#elif CH_NUM_BUCKETS>CH_MAX_NUM_BUCKETS
-#   if CH_NUM_BUCKETS<=65536
-#       error CH_MAX_NUM_BUCKETS must be set to 65536 globally in the Project Options to allow CH_NUM_BUCKETS>256.
-#   elif CH_NUM_BUCKETS<=2147483648
-#       error CH_MAX_NUM_BUCKETS must be set to 2147483648 globally in the Project Options to allow CH_NUM_BUCKETS>65536.
-#   else
-#       error CH_NUM_BUCKETS cannot be bigger than 2147483648.
-#   endif
-#endif
 
 
 typedef struct chashtable chashtable;
@@ -288,14 +288,17 @@ struct chashtable {
     void (*const value_dtr)(void*);                     /* optional (can be NULL) */
     void (*const value_cpy)(void*,const void*);/* optional (can be NULL) */
 
-    /* CH_NUM_BUCKETS sorted buckets */
+    /* CH_NUM_USED_BUCKETS sorted buckets */
     const size_t initial_bucket_capacity;
     struct chvector {
 		void* k;
 		void* v;
 		const size_t size;
-		const size_t capacity;	
-    } buckets[CH_NUM_BUCKETS];
+        const size_t capacity;
+#       ifdef __cplusplus
+        chvector() : k(NULL),v(NULL),size(0),capacity(0) {}
+#       endif
+    } buckets[CH_NUM_USED_BUCKETS];
 
 #   ifndef CH_DISABLE_FAKE_MEMBER_FUNCTIONS  /* must be defined glabally (in the Project Options)) */
     void (* const clear)(chashtable* ht);
@@ -306,12 +309,22 @@ struct chashtable {
     const void* (* const get_const)(const chashtable* ht,const void* key);
     int (* const remove)(chashtable* ht,const void* key);
     size_t (* const get_num_items)(const chashtable* ht);
-    void (* const dbg_check)(const chashtable* ht);
+    int (* const dbg_check)(const chashtable* ht);
     void (* const swap)(chashtable* a,chashtable* b);
     void (* const cpy)(chashtable* a,const chashtable* b);
 #   endif
+
+#   ifdef __cplusplus
+    chashtable();
+#   endif
 };
+#ifdef __cplusplus
+typedef chashtable::chvector chvector;
+#else
 typedef struct chvector chvector;
+#endif
+typedef chvector chvectors[CH_NUM_USED_BUCKETS];
+
 
 #ifdef CH_ENABLE_DECLARATION_AND_DEFINITION
 /* function declarations */
@@ -358,13 +371,13 @@ CH_API void chvector_clear(chvector* v,const chashtable* ht)	{
         if (ht->key_dtr)   {
 			if (ht->value_dtr)	{
             	for (j=0;j<v->size;j++) {
-					ht->key_dtr(v->k+j*ht->key_size_in_bytes);
-                	ht->value_dtr(v->v+j*ht->value_size_in_bytes);
+                    ht->key_dtr((unsigned char*)v->k+j*ht->key_size_in_bytes);
+                    ht->value_dtr((unsigned char*)v->v+j*ht->value_size_in_bytes);
             	}
 			}
-			else  {for (j=0;j<v->size;j++) ht->key_dtr(v->k+j*ht->key_size_in_bytes);}
+            else  {for (j=0;j<v->size;j++) ht->key_dtr((unsigned char*)v->k+j*ht->key_size_in_bytes);}
         }
-		else if (ht->value_dtr) {for (j=0;j<v->size;j++) ht->value_dtr(v->v+j*ht->value_size_in_bytes);}
+        else if (ht->value_dtr) {for (j=0;j<v->size;j++) ht->value_dtr((unsigned char*)v->v+j*ht->value_size_in_bytes);}
     }
     *((size_t*) &v->size)=0;
 }
@@ -458,33 +471,6 @@ CH_API size_t chvector_binary_search(const chvector* v,const void* key,int* matc
     CH_ASSERT(mid<v->size);
     return cmp>0 ? (mid+1) : mid;
 }
-#if 0
-CH_API size_t chvector_insert_at(chvector* v,const CH_HASHTABLE_ITEM_TYPE* item_to_insert,size_t position,const chashtable* ht)  {
-    /* position is in [0,v->size] */
-    /* warning: this code does NOT support passing pointers to items already present in this hashtable */
-    CH_ASSERT(v && ht && item_to_insert && position<=v->size);
-    chvector_reserve(v,v->size+1,ht);
-    if (position<v->size) memmove(&v->v[position+1],&v->v[position],(v->size-position)*sizeof(CH_HASHTABLE_ITEM_TYPE));
-#   ifndef CH_DISABLE_CLEARING_ITEM_MEMORY
-    if (ht->key_ctr || ht->key_cpy || ht->value_ctr || ht->value_cpy) memset(&v->v[position],0,sizeof(CH_HASHTABLE_ITEM_TYPE));
-#   endif
-    if (ht->key_ctr)    ht->key_ctr(&v->v[position].k);
-    if (ht->value_ctr)  ht->value_ctr(&v->v[position].v);
-
-    if (!ht->key_cpy && !ht->value_cpy) memcpy(&v->v[position],item_to_insert,sizeof(CH_HASHTABLE_ITEM_TYPE));
-    else if (ht->key_cpy)   {
-        ht->key_cpy(&v->v[position].k,&item_to_insert->k);
-        if (ht->value_cpy) ht->value_cpy(&v->v[position].v,&item_to_insert->v);
-        else memcpy(&v->v[position].v,&item_to_insert->v,ht->value_size_in_bytes);
-    }
-    else if (ht->value_cpy) {
-        memcpy(&v->v[position].k,&item_to_insert->k,ht->key_size_in_bytes);
-        ht->value_cpy(&v->v[position].v,&item_to_insert->v);
-    }
-    *((size_t*) &v->size)=v->size+1;
-    return position;
-}
-#endif /* 0 */
 CH_API size_t chvector_insert_key_at(chvector* v,const void* key_to_insert,size_t position,const chashtable* ht)  {
     /* position is in [0,v->size] */
     /* warning: this code does NOT support passing pointers to keys already present in this hashtable */
@@ -524,7 +510,7 @@ CH_API int chvector_remove_at(chvector* v,size_t position,const chashtable* ht) 
 
 CH_API_DEF void chashtable_free(chashtable* ht)    {
     if (ht) {
-        const unsigned short max_value = (CH_NUM_BUCKETS-1);
+        const unsigned short max_value = (CH_NUM_USED_BUCKETS-1);
         unsigned short i=0;
         do    {
             chvector* b = &ht->buckets[i];
@@ -537,7 +523,7 @@ CH_API_DEF void chashtable_free(chashtable* ht)    {
 }
 CH_API_DEF void chashtable_clear(chashtable* ht)    {
     if (ht) {
-        const unsigned short max_value = (CH_NUM_BUCKETS-1);
+        const unsigned short max_value = (CH_NUM_USED_BUCKETS-1);
         unsigned short i=0;
         do    {chvector_clear(&ht->buckets[i],ht);}
         while (i++!=max_value);
@@ -553,8 +539,8 @@ CH_API_DEF void* chashtable_get_or_insert(chashtable* ht,const void* key,int* ma
     size_t position;ch_hash_uint hash;int match2;
     CH_ASSERT(ht && ht->key_hash);
     hash = ht->key_hash(key);
-#   if CH_NUM_BUCKETS!=CH_MAX_NUM_BUCKETS
-    CH_ASSERT(hash<CH_NUM_BUCKETS);    /* user 'key_hash' should return values in [0,CH_NUM_BUCKETS). Please use: return somevalue%CH_NUM_BUCKETS */
+#   if CH_NUM_USED_BUCKETS!=CH_MAX_POSSIBLE_NUM_BUCKETS
+    CH_ASSERT(hash<CH_NUM_USED_BUCKETS);    /* user 'key_hash' should return values in [0,CH_NUM_USED_BUCKETS). Please use: return somevalue%CH_NUM_USED_BUCKETS */
 #   endif
     v = &ht->buckets[hash];
     if (!v->k)  {
@@ -580,28 +566,7 @@ CH_API_DEF void* chashtable_get_or_insert(chashtable* ht,const void* key,int* ma
     if (match2) return (unsigned char*)v->v+position*ht->value_size_in_bytes;
 
     /* we must insert an item at 'position' */
-#   if 0
-    {
-        CH_HASHTABLE_ITEM_TYPE item;
-#       ifndef CH_DISABLE_CLEARING_ITEM_MEMORY
-        if (ht->key_ctr || ht->key_cpy || ht->value_ctr || ht->value_cpy) memset(&item,0,sizeof(CH_HASHTABLE_ITEM_TYPE));
-#       endif
-        if (ht->key_ctr) ht->key_ctr(&item.k);
-        if (ht->value_ctr) ht->value_ctr(&item.v);        
-        if (ht->key_cpy) ht->key_cpy(&item.k,key);
-        else memcpy(&item.k,key,ht->key_size_in_bytes);
-        /*if (ht->value_cpy) ht->value_cpy(&item.v,value);
-        else memcpy(&item.v,value,ht->value_size_in_bytes);
-        */
-        /* Warning: see the code of 'insert_at': can't we create 'item' by just emplacing it in v? */
-        /* Or just take both 'key' and 'value' as arguments in both '_get_or_insert' and '_insert_at' */
-        chvector_insert_at(v,&item,position,ht);
-        if (ht->key_dtr) ht->key_dtr(&item.k);
-        if (ht->value_dtr) ht->value_dtr(&item.v);
-    }
-#   else
-        chvector_insert_key_at(v,key,position,ht);
-#   endif
+     chvector_insert_key_at(v,key,position,ht);
     return (unsigned char*)v->v+position*ht->value_size_in_bytes;
 }
 CH_API_DEF void* chashtable_get(chashtable* ht,const void* key) {
@@ -609,8 +574,8 @@ CH_API_DEF void* chashtable_get(chashtable* ht,const void* key) {
     size_t position;ch_hash_uint hash;int match=0;
     CH_ASSERT(ht && ht->key_hash);
     hash = ht->key_hash(key);
-#   if CH_NUM_BUCKETS!=CH_MAX_NUM_BUCKETS
-    CH_ASSERT(hash<CH_NUM_BUCKETS);    /* user 'key_hash' should return values in [0,CH_NUM_BUCKETS). Please use: return somevalue%CH_NUM_BUCKETS */
+#   if CH_NUM_USED_BUCKETS!=CH_MAX_POSSIBLE_NUM_BUCKETS
+    CH_ASSERT(hash<CH_NUM_USED_BUCKETS);    /* user 'key_hash' should return values in [0,CH_NUM_USED_BUCKETS). Please use: return somevalue%CH_NUM_USED_BUCKETS */
 #   endif
     v = &ht->buckets[hash];
     if (!v->k || v->size==0)  return NULL;
@@ -636,8 +601,8 @@ CH_API_DEF int chashtable_remove(chashtable* ht,const void* key) {
     size_t position;ch_hash_uint hash;int match = 0;
     CH_ASSERT(ht && ht->key_hash);
     hash = ht->key_hash(key);
-#   if CH_NUM_BUCKETS!=CH_MAX_NUM_BUCKETS
-    CH_ASSERT(hash<CH_NUM_BUCKETS);    /* user 'key_hash' should return values in [0,CH_NUM_BUCKETS). Please use: return somevalue%CH_NUM_BUCKETS */
+#   if CH_NUM_USED_BUCKETS!=CH_MAX_POSSIBLE_NUM_BUCKETS
+    CH_ASSERT(hash<CH_NUM_USED_BUCKETS);    /* user 'key_hash' should return values in [0,CH_NUM_USED_BUCKETS). Please use: return somevalue%CH_NUM_USED_BUCKETS */
 #   endif
     v = &ht->buckets[hash];
     if (!v->k)  return 0;
@@ -660,7 +625,7 @@ CH_API_DEF int chashtable_remove(chashtable* ht,const void* key) {
 }
 CH_API_DEF size_t chashtable_get_num_items(const chashtable* ht) {
     size_t i,sum=0;CH_ASSERT(ht);
-    for (i=0;i<CH_NUM_BUCKETS;i++) sum+=ht->buckets[i].size;
+    for (i=0;i<CH_NUM_USED_BUCKETS;i++) sum+=ht->buckets[i].size;
     return sum;
 }
 CH_API_DEF int chashtable_dbg_check(const chashtable* ht) {
@@ -670,7 +635,7 @@ CH_API_DEF int chashtable_dbg_check(const chashtable* ht) {
     double mem_used_percentage = 100;
     const unsigned char* last_key = NULL;
     CH_ASSERT(ht);
-    for (i=0;i<CH_NUM_BUCKETS;i++) {
+    for (i=0;i<CH_NUM_USED_BUCKETS;i++) {
         const chvector* bck = &ht->buckets[i];
         num_total_items+=bck->size;
         num_total_capacity+=bck->capacity;
@@ -697,14 +662,14 @@ CH_API_DEF int chashtable_dbg_check(const chashtable* ht) {
             }
         }
     }
-    avg_num_bucket_items = (double)num_total_items/(double) CH_NUM_BUCKETS;
+    avg_num_bucket_items = (double)num_total_items/(double) CH_NUM_USED_BUCKETS;
     mem_used_percentage = (double)mem_used*100.0/(double)mem_minimal;
-    if (CH_NUM_BUCKETS<2) {std_deviation=0.;avg_cnt=min_cnt=max_cnt=1;avg_round=(min_num_bucket_items+max_num_bucket_items)/2;}
+    if (CH_NUM_USED_BUCKETS<2) {std_deviation=0.;avg_cnt=min_cnt=max_cnt=1;avg_round=(min_num_bucket_items+max_num_bucket_items)/2;}
     else {
         const double dec = avg_num_bucket_items-(double)((size_t)avg_num_bucket_items); /* in (0,1] */
         avg_round = (size_t)avg_num_bucket_items;
         if (dec>=0.5) avg_round+=1;
-        for (i=0;i<CH_NUM_BUCKETS;i++) {
+        for (i=0;i<CH_NUM_USED_BUCKETS;i++) {
             const chvector* bck = &ht->buckets[i];
             double tmp = bck->size-avg_num_bucket_items;
             std_deviation+=tmp*tmp;
@@ -712,7 +677,7 @@ CH_API_DEF int chashtable_dbg_check(const chashtable* ht) {
             if (bck->size==max_num_bucket_items) ++max_cnt;
             if (bck->size==avg_round) ++avg_cnt;
         }
-        std_deviation/=(double)(CH_NUM_BUCKETS-1); /* this is the variance */
+        std_deviation/=(double)(CH_NUM_USED_BUCKETS-1); /* this is the variance */
         /* we must calculate its square root now without depending on <math.h>. Code based on:
            https://stackoverflow.com/questions/29018864/any-way-to-obtain-square-root-of-a-number-without-using-math-h-and-sqrt
         */
@@ -733,7 +698,7 @@ CH_API_DEF int chashtable_dbg_check(const chashtable* ht) {
     }
 #   ifndef CH_NO_STDIO    
     printf("[chashtable_dbg_check]:\n");
-    printf("\tnum_total_items=%lu (num_total_capacity=%lu) in %d buckets [items per bucket: mean=%1.3f std_deviation=%1.3f min=%lu (in %lu/%d) avg=%lu (in %lu/%d) max=%lu (in %lu/%d)].\n",num_total_items,num_total_capacity,CH_NUM_BUCKETS,avg_num_bucket_items,std_deviation,min_num_bucket_items,min_cnt,CH_NUM_BUCKETS,avg_round,avg_cnt,CH_NUM_BUCKETS,max_num_bucket_items,max_cnt,CH_NUM_BUCKETS);
+    printf("\tnum_total_items=%lu (num_total_capacity=%lu) in %d buckets [items per bucket: mean=%1.3f std_deviation=%1.3f min=%lu (in %lu/%d) avg=%lu (in %lu/%d) max=%lu (in %lu/%d)].\n",num_total_items,num_total_capacity,CH_NUM_USED_BUCKETS,avg_num_bucket_items,std_deviation,min_num_bucket_items,min_cnt,CH_NUM_USED_BUCKETS,avg_round,avg_cnt,CH_NUM_USED_BUCKETS,max_num_bucket_items,max_cnt,CH_NUM_USED_BUCKETS);
     printf("\tmemory_used: ");ch_display_bytes(mem_used);
     printf(". memory_minimal_possible: ");ch_display_bytes(mem_minimal);
     printf(". mem_used_percentage: %1.2f%% (100%% is the best possible result).\n",mem_used_percentage);
@@ -779,7 +744,7 @@ CH_API_DEF void chashtable_cpy(chashtable* a,const chashtable* b) {
     *((value_ctr_dtr_type*)&a->value_dtr) = b->value_dtr;
     *((value_cpy_type*)&a->value_cpy) = b->value_cpy;
     *((size_t*)&a->initial_bucket_capacity) = b->initial_bucket_capacity;
-    for (i=0;i<CH_NUM_BUCKETS;i++)  {
+    for (i=0;i<CH_NUM_USED_BUCKETS;i++)  {
         chvector* A = &a->buckets[i];
         const chvector* B = &b->buckets[i];
         /* bad init asserts */
@@ -846,7 +811,7 @@ CH_API_DEF void chashtable_create_with(
     *((value_cpy_type*)&ht->value_cpy) = value_cpy;
     *((size_t*)&ht->initial_bucket_capacity) = initial_bucket_capacity>1 ? initial_bucket_capacity : 1;
     CH_ASSERT(ht->key_hash);
-    /*memset(ht->buckets,0,CH_NUM_BUCKETS*sizeof(chvector));*/
+    /*memset(ht->buckets,0,CH_NUM_USED_BUCKETS*sizeof(chvector));*/
 #   ifndef CH_DISABLE_FAKE_MEMBER_FUNCTIONS
     *((clear_free_shrink_to_fit_mf*)&ht->clear) = &chashtable_clear;
     *((clear_free_shrink_to_fit_mf*)&ht->free) = &chashtable_free;
@@ -864,6 +829,18 @@ CH_API_DEF void chashtable_create_with(
 CH_API_DEF void chashtable_create(chashtable* ht,size_t key_size_in_bytes,size_t value_size_in_bytes,ch_hash_uint (*key_hash)(const void*),int (*key_cmp) (const void*,const void*),size_t initial_bucket_capacity)    {
     chashtable_create_with(ht,key_size_in_bytes,value_size_in_bytes,key_hash,key_cmp,NULL,NULL,NULL,NULL,NULL,NULL,initial_bucket_capacity);
 }
+
+#   ifdef __cplusplus
+    chashtable::chashtable() :
+        key_size_in_bytes(0),value_size_in_bytes(0),
+        key_ctr(NULL),key_dtr(NULL),key_cpy(NULL),key_cmp(NULL),key_hash(NULL),
+        value_ctr(NULL),value_dtr(NULL),value_cpy(NULL),
+        clear(&chashtable_clear),free(&chashtable_free),shrink_to_fit(&chashtable_shrink_to_fit),
+        get_or_insert(&chashtable_get_or_insert),get(&chashtable_get),get_const(&chashtable_get_const),
+        remove(&chashtable_remove),get_num_items(&chashtable_get_num_items),
+        dbg_check(&chashtable_dbg_check),swap(&chashtable_swap),cpy(&chashtable_cpy)
+    {}
+#   endif
 
 CH_EXTERN_C_END
 
