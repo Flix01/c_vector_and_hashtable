@@ -65,7 +65,6 @@ Fetched item ht["name"]=["John"].
 /*#define NO_STRING_STRING_TEST*/
 
 #ifndef NO_SIMPLE_TEST
-/* The struct we'll use in a vector */
 /* 'typedef is mandatory: we need global visibility */
 typedef struct {
 	int a,b,c;

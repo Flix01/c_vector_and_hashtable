@@ -66,7 +66,6 @@ Fetched item ht["name"]=["John"].
 /*#define NO_STRING_STRING_TEST*/
 
 #ifndef NO_SIMPLE_TEST
-/* The struct we'll use in a vector */
 /* 'typedef is mandatory: we need global visibility */
 typedef struct {
 	int a,b,c;
@@ -212,7 +211,8 @@ static void SimpleTest(void)    {
     }
 
     /* Debug function that can be useful to detect sorting errors and
-       optimize 'mykey_hash' (to reduce the standard deviation) and 'CH_NUM_BUCKETS_mykey_myvalue' */
+       optimize 'mykey_hash' (to reduce the standard deviation)
+       and 'CH_NUM_USED_BUCKETS' (but in the type-unsafe version it's common to all chashtables) */
     chashtable_dbg_check(&ht);
     chashtable_shrink_to_fit(&ht);    /* removes unused capacity (slow) */
     chashtable_dbg_check(&ht);
@@ -303,7 +303,8 @@ static void StringStringTest(void)  {
     }
 
     /* Debug function that can be useful to detect sorting errors and
-       optimize 'string_hash' (to reduce the standard deviation) and 'CH_NUM_BUCKETS_string_string' */
+       optimize 'string_hash' (to reduce the standard deviation)
+       and 'CH_NUM_USED_BUCKETS' (but in the type-unsafe version it's common to all chashtables) */
     chashtable_dbg_check(&ht);
 
     /* remove one item */
