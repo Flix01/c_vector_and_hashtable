@@ -118,7 +118,7 @@ static int mykey_cmp(const mykey* a,const mykey* b) {
     return 0;
 }
 static __inline ch_hash_uint mykey_hash(const mykey* k) {
-    return ((k->a)
+    return (ch_hash_uint)((k->a)
 #   if CH_NUM_BUCKETS_mykey_myvalue!=CH_MAX_NUM_BUCKETS /* otherwise mod is unnecessary */
     %CH_NUM_BUCKETS_mykey_myvalue /* CH_MAX_NUM_BUCKETS can be 256 or 65536, but must be set globally (i.e. in Project Options) */
 #   endif
@@ -279,10 +279,10 @@ static __inline void string_setter(string* a,const char* b)    {
 static void string_cpy(string* a,const string* b)    {string_setter(a,*b);}
 static __inline ch_hash_uint string_hash(const string* k) {
 /*#   define TEST_MURMUR_3_HASH */  /* ...we should test this with a lot of strings... */
-    return (((*k) ?
+    return (ch_hash_uint)(((*k) ?
 #   ifdef TEST_MURMUR_3_HASH
                  /* well, ch_hash_murmur3(...) returns a 32-bit unsigned int. Hope it works... */
-                 (ch_hash_uint) ch_hash_murmur3((const unsigned char*) (*k),strlen(*k),7)  /* ...but its calculation is much slower */
+                 ch_hash_murmur3((const unsigned char*) (*k),strlen(*k),7)  /* ...but its calculation is much slower */
 #   else
                  strlen(*k)     /* naive hash but calculation is much faster */
 #   endif

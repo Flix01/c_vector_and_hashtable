@@ -87,7 +87,7 @@ static int mykey_cmp(const void* av,const void* bv) {
 }
 static __inline ch_hash_uint mykey_hash(const void* kv) {
 	const mykey* k = (const mykey*) kv;
-    return ((k->a)
+    return (ch_hash_uint)((k->a)
 #   if CH_NUM_USED_BUCKETS!=CH_MAX_POSSIBLE_NUM_BUCKETS /* otherwise mod is unnecessary */
         %CH_NUM_USED_BUCKETS /* CH_MAX_POSSIBLE_NUM_BUCKETS is READ-ONLY and can be 256 or 65536, or 2147483648 (it depends on CH_NUM_USED_BUCKETS, and the type 'ch_hash_uint' depends on it) */
 #   endif
@@ -178,7 +178,7 @@ static void SimpleTest(void)    {
         for (j=0;j<bucket->size;j++)	{
             const mykey* key = &keys[j];
             const myvalue* val = &values[j];
-            printf("%lu) ht[\t%d,\t%d,\t%d]\t=\t[\"%s\"].\n",k++,key->a,key->b,key->c,(val&&val->name)?val->name:"NULL");
+            printf("%lu) ht[\t%d,\t%d,\t%d]\t=\t[\"%s\"].\n",k++,key->a,key->b,key->c,val?val->name:"NULL");
         }
     }
     /* CH_NUM_USED_BUCKETS can be set globally, and it's equivalent to: */
@@ -206,7 +206,7 @@ static void SimpleTest(void)    {
         for (j=0;j<bucket->size;j++)	{
             const mykey* key = &keys[j];
             const myvalue* val = &values[j];
-            printf("%lu) ht[\t%d,\t%d,\t%d]\t=\t[\"%s\"].\n",k++,key->a,key->b,key->c,(val&&val->name)?val->name:"NULL");
+            printf("%lu) ht[\t%d,\t%d,\t%d]\t=\t[\"%s\"].\n",k++,key->a,key->b,key->c,val?val->name:"NULL");
         }
     }
 
@@ -247,10 +247,10 @@ static void string_cpy(void* av,const void* bv)    {string* a=(string*)av;const 
 static __inline ch_hash_uint string_hash(const void* kv) {
 /*#   define TEST_MURMUR_3_HASH */  /* ...we should test this with a lot of strings... */
 	const string* k=(const string*)kv;
-    return (((*k) ?
+    return (ch_hash_uint) (((*k) ?
 #   ifdef TEST_MURMUR_3_HASH
                  /* well, ch_hash_murmur3(...) returns a 32-bit unsigned int. Hope it works... */
-                 (ch_hash_uint) ch_hash_murmur3((const unsigned char*) (*k),strlen(*k),7)  /* ...but its calculation is much slower */
+                 ch_hash_murmur3((const unsigned char*) (*k),strlen(*k),7)  /* ...but its calculation is much slower */
 #   else
                  strlen(*k)     /* naive hash but calculation is much faster */
 #   endif

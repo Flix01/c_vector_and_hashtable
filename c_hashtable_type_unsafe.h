@@ -704,7 +704,7 @@ CH_API_DEF int chashtable_dbg_check(const chashtable* ht) {
     printf(". mem_used_percentage: %1.2f%% (100%% is the best possible result).\n",mem_used_percentage);
 #   endif
     CH_ASSERT(num_sorting_errors==0); /* When this happens, it can be a wrong user 'itemKey_cmp' function (that cannot sort keys in a consistent way) */
-    return num_total_items;
+    return (int) num_total_items;
 }
 
 CH_API_DEF void chashtable_swap(chashtable* a,chashtable* b)  {

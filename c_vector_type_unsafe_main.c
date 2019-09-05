@@ -128,8 +128,9 @@ static void SimpleTest(void)   {
 
     /* (test) we re-add an already inserted item (right after 'cvector_shrink_to_fit(...)' so that a reallocation will happen invalidating the item pointer) */
     if (v.size>0) {
+	    const mystruct* pitem;
         p = (const mystruct*) v.v;
-        const mystruct* pitem = &p[0];
+        pitem = &p[0];
         printf("re-inserting v[0]={\t%d,\t%d,\t%d};\n",p[0].a,p[0].b,p[0].c);
         CV_ASSERT(p && pitem>=p && pitem<(p+v.size)); /* if a realloc happens, 'pitem' will be invalidated before we can copy it back in the vector, unless the code is robust enough to detect this border case */
         cvector_insert_sorted(&v,pitem,NULL,1); /* of course we can just use '&v.v[itemIdx]' instead of 'pitem' here */
