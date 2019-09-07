@@ -56,23 +56,24 @@ dkms.conf
 
 
 reps/
-wasm/
+examples/reps/
+examples/wasm/
 main
 *.exe
 *.stash
 Makefile
-c_vector_main
-c_hashtable_main
-deprecated/main
+examples/c_vector_main
+examples/c_hashtable_main
+examples/deprecated/main
 *.pro
 *.user
-c_vector_test.h
-c_hashtable_test.h
-c_vector_test.c
-c_hashtable_test.c
-c_vector_test
-c_hashtable_test
-c_vector_type_unsafe_main
-c_hashtable_type_unsafe_main
+examples/c_vector_test.h
+examples/c_hashtable_test.h
+examples/c_vector_test.c
+examples/c_hashtable_test.c
+examples/c_vector_test
+examples/c_hashtable_test
+examples/c_vector_type_unsafe_main
+examples/c_hashtable_type_unsafe_main
 
 

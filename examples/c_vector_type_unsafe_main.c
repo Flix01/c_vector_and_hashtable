@@ -1,21 +1,21 @@
 /*
 // (plain C) compilation:
 // gcc
-gcc -O2 -no-pie -fno-pie c_vector_type_unsafe_main.c -o c_vector_type_unsafe_main
+gcc -O2 -no-pie -fno-pie -I"../include" c_vector_type_unsafe_main.c -o c_vector_type_unsafe_main
 // clang
-clang -O2 -no-pie -fno-pie c_vector_type_unsafe_main.c -o c_vector_type_unsafe_main
+clang -O2 -no-pie -fno-pie -I"../include" c_vector_type_unsafe_main.c -o c_vector_type_unsafe_main
 // mingw
-x86_64-w64-mingw32-gcc -mconsole -O2 c_vector_type_unsafe_main.c -o c_vector_type_unsafe_main.exe
+x86_64-w64-mingw32-gcc -mconsole -O2 -I"../include" c_vector_type_unsafe_main.c -o c_vector_type_unsafe_main.exe
 // cl.exe (from Visual C++ 7.1 2003)
-cl /O2 /MT /Tc c_vector_type_unsafe_main.c /link /out:c_vector_type_unsafe_main.exe user32.lib kernel32.lib
+cl /O2 /MT /Tc /I"../include" c_vector_type_unsafe_main.c /link /out:c_vector_type_unsafe_main.exe user32.lib kernel32.lib
 */
 
 /*
 // compile as C++ [not really necessary (we could just scope code with 'extern "C"', like in <c_vector.h>)]
 // gcc
-gcc -O2 -x c++ -no-pie -fno-pie c_vector_type_unsafe_main.c -o c_vector_type_unsafe_main
+gcc -O2 -x c++ -no-pie -fno-pie -I"../include" c_vector_type_unsafe_main.c -o c_vector_type_unsafe_main
 // or just
-g++ -O2 -no-pie -fno-pie c_vector_type_unsafe_main.c -o c_vector_type_unsafe_main
+g++ -O2 -no-pie -fno-pie -I"../include" c_vector_type_unsafe_main.c -o c_vector_type_unsafe_main
 */
 
 /* Program Output:

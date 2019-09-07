@@ -1,10 +1,10 @@
 /* 
 -> plain C compilation:
-gcc -O2 -no-pie -fno-pie main.c -o main
+gcc -O2 -no-pie -fno-pie -I"../../include/deprecated" main.c -o main
 
 -> C++ compilation:
-gcc -x c++ -O2 -no-pie -fno-pie main.c -o main
-[or just: g++ -O2 -no-pie -fno-pie main.c -o main]
+gcc -x c++ -O2 -no-pie -fno-pie -I"../../include/deprecated" main.c -o main
+[or just: g++ -O2 -no-pie -fno-pie -I"../../include/deprecated" main.c -o main]
 
 -> run 
 ./main
@@ -42,8 +42,8 @@ An item with key[	10,	250,	125] is NOT present.
 
 
 -> Extra stuff: mingw and (an old) cl compiler command-lines
-x86_64-w64-mingw32-gcc -mconsole -O2 main.c -o main_mingw.exe
-cl /O2 /MT /Tc main.c /link /out:main_vc.exe user32.lib kernel32.lib
+x86_64-w64-mingw32-gcc -mconsole -O2 -I"../../include/deprecated" main.c -o main_mingw.exe
+cl /O2 /MT /Tc /I"../../include/deprecated" main.c /link /out:main_vc.exe user32.lib kernel32.lib
 
 */
 
