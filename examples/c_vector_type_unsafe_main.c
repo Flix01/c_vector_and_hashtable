@@ -11,11 +11,15 @@ cl /O2 /MT /Tc c_vector_type_unsafe_main.c /I"../include" /link /out:c_vector_ty
 */
 
 /*
-// compile as C++ [not really necessary (we could just scope code with 'extern "C"', like in <c_vector.h>)]
+// compile as C++ [not really necessary]
 // gcc
 gcc -O2 -x c++ -no-pie -fno-pie -I"../include" c_vector_type_unsafe_main.c -o c_vector_type_unsafe_main
 // or just
 g++ -O2 -no-pie -fno-pie -I"../include" c_vector_type_unsafe_main.c -o c_vector_type_unsafe_main
+// clang and mingw are gcc based (try using clang++ and x86_64-w64-mingw32-g++)
+
+// cl.exe (from Visual C++ 7.1 2003)
+cl /O2 /MT /Tp c_vector_type_unsafe_main.c /I"../include" /EHsc /link /out:c_vector_type_unsafe_main_vc.exe user32.lib kernel32.lib
 */
 
 /* Program Output:
@@ -27,7 +31,7 @@ g++ -O2 -no-pie -fno-pie -I"../include" c_vector_type_unsafe_main.c -o c_vector_
 /*#define NO_SIMPLE_TEST*/
 /*#define NO_STRINGVECTOR_TEST*/
 /*#define NO_COMPLEXTEST*/
-
+/*#define NO_CPP_TEST*/
 
 #ifndef NO_SIMPLE_TEST
 /* The struct we'll use in a vector */
@@ -349,6 +353,68 @@ static void ComplexTest(void) {
 #endif /* NO_COMPLEXTEST */
 
 
+#ifndef NO_CPP_TEST
+#ifdef __cplusplus
+#   include <vector>
+void CppTest(void)    {
+    /* This makes only sense when porting existing C++ code to plain C. Some tips:
+       -> try to replace a single 'std::vector' with a 'cvector', keep the code compilable (in C++) and repeat the process
+       -> std::vector<cvector> works
+       -> a cvector that includes (directly or indirectly) a std::vector (or any other STL container) does NOT work
+       -> 'cvector_create(...)' is still mandatory
+       -> we can use 'v.at<type>(i)' as a quick replacement of STL operator[] (i.e. 'v[i]') (but it does not work in plain C, so we'll need to convert it later)
+       -> cvector::~cvector() calls 'cvector_free(...)' for us (but in plain C it's not available. It can be useful to remember that it's harmless to call 'cvector_free(...)' multiple times)
+       -> some programmers prefer using the 'fake member function' syntax when porting code from std::vector
+    */
+
+    size_t i,j;
+    const int tmp[]={0,1,2,3,4,5,6,7,8,9};
+    cvector v0,v1;
+    std::vector<cvector> vstd;
+
+    printf("\nCPP MODE TEST:\n");
+
+    cvector_create(&v0,sizeof(int),NULL);   /* 'cvector_create(...)' is still mandatory */
+    cvector_create(&v1,sizeof(int),NULL);   /* 'cvector_create(...)' is still mandatory */
+
+    for (i=0;i<5;i++) cvector_push_back(&v0,&tmp[i]); /* or v0.push_back(&v0,&tmp[i]) in the 'fake member function' syntax */
+    cvector_insert_range_at(&v1,&tmp[3],4,0);            /* or v1.insert_range_at(&v1,&tmp[3],4,0) in the 'fake member function' syntax */
+
+    for (i=0;i<v0.size;i++) printf("v0[%lu] = %d;\n",i,v0.at<int>(i));  /* Warning: '.at<type>(i)' is C++ specific */
+    for (i=0;i<v1.size;i++) printf("v1[%lu] = %d;\n",i,v1.at<int>(i));
+
+    printf("cvector_swap(&v1,&v0):\n");
+    cvector_swap(&v1,&v0);
+
+    for (i=0;i<v0.size;i++) printf("v0[%lu] = %d;\n",i,v0.at<int>(i));
+    for (i=0;i<v1.size;i++) printf("v1[%lu] = %d;\n",i,v1.at<int>(i));
+
+    printf("std::vector<cvector> test:\n");
+    vstd.push_back(v0);
+    vstd.push_back(v1);
+    vstd.push_back(v0);
+    vstd.push_back(v1);
+    vstd.push_back(v0);
+    vstd.push_back(v1);
+
+    for (j=0;j<vstd.size();j++) {
+        const cvector& v = vstd[j];
+        printf("vstd[%lu]:\n",j);
+        for (i=0;i<v.size;i++) printf("\tv[%lu] = %d;\n",i,v.at<int>(i));
+    }
+
+    printf("cvector_cpy(&v1,&v0):\n");
+    cvector_cpy(&v1,&v0);
+
+    for (i=0;i<v0.size;i++) printf("v0[%lu] = %d;\n",i,v0.at<int>(i));
+    for (i=0;i<v1.size;i++) printf("v1[%lu] = %d;\n",i,v1.at<int>(i));
+
+    /* cvector_free(...) is called for us at cvector::~cvector() */
+}
+#endif /* __cpusplus */
+#endif /* NO_CPP_TEST */
+
+
 
 int main(int argc,char* argv[])
 {
@@ -361,6 +427,12 @@ int main(int argc,char* argv[])
 #ifndef NO_COMPLEXTEST
     ComplexTest();
 #endif /* NO_COMPLEXTEST */
+
+#ifndef NO_CPP_TEST
+#ifdef __cplusplus
+    CppTest();
+#endif /* __cpusplus */
+#endif /* NO_CPP_TEST */
 
     return 1;
 }

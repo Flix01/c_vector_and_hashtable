@@ -57,19 +57,18 @@ freely, subject to the following restrictions:
 #endif
 
 #ifndef C_VECTOR_VERSION
-#define C_VECTOR_VERSION        "1.09"
-#define C_VECTOR_VERSION_NUM    0109
+#define C_VECTOR_VERSION        "1.10"
+#define C_VECTOR_VERSION_NUM    0110
 #endif
 
 
 
 /* HISTORY:
-   C_VECTOR_VERSION_NUM 0109:
-   -> renamed CV_VERSION to C_VECTOR_VERSION
-   -> renamed CV_VERSION_NUM to C_VECTOR_VERSION_NUM
-   -> some internal changes to minimize interference with (the type-unsafe version) "c_vector_type_unsafe.h",
-      hoping that they can both cohexist in the same project.
-   -> added a ctr to ease compilation in c++ mode
+   C_VECTOR_VERSION_NUM 110
+   -> added c++ copy ctr, copy assignment and dtr (and move ctr plus move assignment if CV_HAS_MOVE_SEMANTICS is defined),
+      to ease porting code from c++ to c a bit more
+   -> removed internal definitions CV_EXTERN_C_START, CV_EXTERN_C_END, CV_DEFAULT_STRUCT_INIT
+      Now code is no more 'extern C'
 
    CV_VERSION_NUM 0108:
    -> fixed an error in 'cv_xxx_insert_range_at(...)
@@ -154,23 +153,10 @@ freely, subject to the following restrictions:
 */
 
 /* ------------------------------------------------- */
-#undef CV_EXTERN_C_START
-#undef CV_EXTERN_C_END
-#undef CV_DEFAULT_STRUCT_INIT
-
-#ifdef __cplusplus
-#   undef CV_EXTERN_C_START
-#   define CV_EXTERN_C_START   extern "C"  {
-#   undef CV_EXTERN_C_END
-#   define CV_EXTERN_C_END  }
-#   define CV_DEFAULT_STRUCT_INIT {}
-#else
-#   define CV_EXTERN_C_START /* no-op */
-#   define CV_EXTERN_C_END /* no-op */
-#   define CV_DEFAULT_STRUCT_INIT {0}
+#if __cplusplus>=201103L
+#   undef CV_HAS_MOVE_SEMANTICS
+#   define CV_HAS_MOVE_SEMANTICS
 #endif
-
-CV_EXTERN_C_START
 
 #if (defined (NDEBUG) || defined (_NDEBUG))
 #   undef CV_NO_ASSERT
@@ -300,6 +286,17 @@ struct CV_VECTOR_TYPE {
 
 #   ifdef __cplusplus
     CV_VECTOR_TYPE();
+    CV_VECTOR_TYPE(const CV_VECTOR_TYPE& o);
+    CV_VECTOR_TYPE& operator=(const CV_VECTOR_TYPE& o);
+
+    CV_API_INL CV_TYPE& operator[](size_t i) {CV_ASSERT(i<size);return v[i];}
+    CV_API_INL const CV_TYPE& operator[](size_t i) const {CV_ASSERT(i<size);return v[i];}
+
+#   ifdef CV_HAS_MOVE_SEMANTICS
+    CV_VECTOR_TYPE(CV_VECTOR_TYPE&& o);
+    CV_VECTOR_TYPE& operator=(CV_VECTOR_TYPE&& o);
+#   endif
+    ~CV_VECTOR_TYPE();
 #   endif
 
 };
@@ -425,10 +422,12 @@ CV_API_DEF void CV_VECTOR_TYPE_FCT(_clear)(CV_VECTOR_TYPE* v)	{
 }
 CV_API_DEF void CV_VECTOR_TYPE_FCT(_swap)(CV_VECTOR_TYPE* a,CV_VECTOR_TYPE* b)  {
     unsigned char t[sizeof(CV_VECTOR_TYPE)];
-    CV_ASSERT(a && b);
-    memcpy(t,a,sizeof(CV_VECTOR_TYPE));
-    memcpy(a,b,sizeof(CV_VECTOR_TYPE));
-    memcpy(b,t,sizeof(CV_VECTOR_TYPE));
+    if (a!=b)   {
+        CV_ASSERT(a && b);
+        memcpy(t,a,sizeof(CV_VECTOR_TYPE));
+        memcpy(a,b,sizeof(CV_VECTOR_TYPE));
+        memcpy(b,t,sizeof(CV_VECTOR_TYPE));
+    }
 }
 CV_API_DEF void CV_VECTOR_TYPE_FCT(_reserve)(CV_VECTOR_TYPE* v,size_t size)	{
 	/*printf("ok %s (sizeof(%s)=%lu)\n",CV_XSTR(CV_VECTOR_TYPE_FCT(_reserve)),CV_XSTR(CV_TYPE),sizeof(CV_TYPE));*/
@@ -479,7 +478,7 @@ CV_API_DEF void CV_VECTOR_TYPE_FCT(_push_back)(CV_VECTOR_TYPE* v,const CV_TYPE* 
     CV_ASSERT(v);
     item_cpy = v->item_cpy ? v->item_cpy : &(CV_TYPE_FCT(_default_item_cpy));
         if (v->v && value>=v->v && value<(v->v+v->size))  {
-            CV_TYPE v_val = CV_DEFAULT_STRUCT_INIT;
+            CV_TYPE v_val;memset(&v_val,0,sizeof(CV_TYPE));
             if (v->item_ctr) v->item_ctr(&v_val); 
             item_cpy(&v_val,value);
 
@@ -552,7 +551,7 @@ CV_API_DEF size_t CV_VECTOR_TYPE_FCT(_insert_at)(CV_VECTOR_TYPE* v,const CV_TYPE
     CV_ASSERT(v && position<=v->size);
     item_cpy = v->item_cpy ? v->item_cpy : &(CV_TYPE_FCT(_default_item_cpy));
     if (v->v && item_to_insert>=v->v && item_to_insert<(v->v+v->size))  {
-        CV_TYPE v_val = CV_DEFAULT_STRUCT_INIT;
+        CV_TYPE v_val;memset(&v_val,0,sizeof(CV_TYPE));
 
         if (v->item_ctr) v->item_ctr(&v_val);
         item_cpy(&v_val,item_to_insert);
@@ -674,6 +673,7 @@ CV_API_DEF void CV_VECTOR_TYPE_FCT(_cpy)(CV_VECTOR_TYPE* a,const CV_VECTOR_TYPE*
     typedef void (*item_ctr_dtr_type)(CV_TYPE*);
     typedef void (*item_cpy_type)(CV_TYPE*,const CV_TYPE*);
     typedef int (*item_cmp_type)(const CV_CMP_TYPE*,const CV_CMP_TYPE*);
+    if (a==b) return;
     CV_ASSERT(a && b);
     /* bad init asserts */
     CV_ASSERT(!(a->v && a->capacity==0));
@@ -693,7 +693,7 @@ CV_API_DEF void CV_VECTOR_TYPE_FCT(_cpy)(CV_VECTOR_TYPE* a,const CV_VECTOR_TYPE*
 }
 CV_API_DEF void CV_VECTOR_TYPE_FCT(_shrink_to_fit)(CV_VECTOR_TYPE* v)	{
     if (v)	{
-        CV_VECTOR_TYPE o=CV_DEFAULT_STRUCT_INIT;
+        CV_VECTOR_TYPE o;memset(&o,0,sizeof(CV_VECTOR_TYPE));
         CV_VECTOR_TYPE_FCT(_cpy)(&o,v); /* now 'o' is 'v' trimmed */
         CV_VECTOR_TYPE_FCT(_free)(v);
         CV_VECTOR_TYPE_FCT(_swap)(&o,v);
@@ -814,7 +814,60 @@ CV_API_DEF void CV_VECTOR_TYPE_FCT(_create)(CV_VECTOR_TYPE* v,int (*item_cmp)(co
     insert_sorted(&CV_VECTOR_TYPE_FCT(_insert_sorted)),insert_sorted_by_val(&CV_VECTOR_TYPE_FCT(_insert_sorted_by_val)),
     remove_at(&CV_VECTOR_TYPE_FCT(_remove_at)),remove_range_at(&CV_VECTOR_TYPE_FCT(_remove_range_at)),
     cpy(&CV_VECTOR_TYPE_FCT(_cpy)),dbg_check(&CV_VECTOR_TYPE_FCT(_dbg_check))
-    {}
+{}
+
+    CV_VECTOR_TYPE::CV_VECTOR_TYPE(const CV_VECTOR_TYPE& o) :
+    v(NULL),size(0),capacity(0),
+    item_ctr(o.item_ctr),item_dtr(o.item_dtr),item_cpy(o.item_cpy),item_cmp(o.item_cmp),
+    free(&CV_VECTOR_TYPE_FCT(_free)),clear(&CV_VECTOR_TYPE_FCT(_clear)),shrink_to_fit(&CV_VECTOR_TYPE_FCT(_shrink_to_fit)),
+    swap(&CV_VECTOR_TYPE_FCT(_swap)),reserve(&CV_VECTOR_TYPE_FCT(_reserve)),
+    resize(&CV_VECTOR_TYPE_FCT(_resize)),resize_with(&CV_VECTOR_TYPE_FCT(_resize_with)),resize_with_by_val(&CV_VECTOR_TYPE_FCT(_resize_with_by_val)),
+    push_back(&CV_VECTOR_TYPE_FCT(_push_back)),push_back_by_val(&CV_VECTOR_TYPE_FCT(_push_back_by_val)),pop_back(&CV_VECTOR_TYPE_FCT(_pop_back)),
+    linear_search(&CV_VECTOR_TYPE_FCT(_linear_search)),linear_search_by_val(&CV_VECTOR_TYPE_FCT(_linear_search_by_val)),
+    binary_search(&CV_VECTOR_TYPE_FCT(_binary_search)),binary_search_by_val(&CV_VECTOR_TYPE_FCT(_binary_search_by_val)),
+    insert_at(&CV_VECTOR_TYPE_FCT(_insert_at)),insert_at_by_val(&CV_VECTOR_TYPE_FCT(_insert_at_by_val)),
+    insert_range_at(&CV_VECTOR_TYPE_FCT(_insert_range_at)),
+    insert_sorted(&CV_VECTOR_TYPE_FCT(_insert_sorted)),insert_sorted_by_val(&CV_VECTOR_TYPE_FCT(_insert_sorted_by_val)),
+    remove_at(&CV_VECTOR_TYPE_FCT(_remove_at)),remove_range_at(&CV_VECTOR_TYPE_FCT(_remove_range_at)),
+    cpy(&CV_VECTOR_TYPE_FCT(_cpy)),dbg_check(&CV_VECTOR_TYPE_FCT(_dbg_check))
+    {
+        CV_VECTOR_TYPE_FCT(_cpy)(this,&o);
+    }
+
+    CV_VECTOR_TYPE& CV_VECTOR_TYPE::operator=(const CV_VECTOR_TYPE& o)    {CV_VECTOR_TYPE_FCT(_cpy)(this,&o);return *this;}
+
+#   ifdef CV_HAS_MOVE_SEMANTICS
+    CV_VECTOR_TYPE::CV_VECTOR_TYPE(CV_VECTOR_TYPE&& o) :
+    v(o.v),size(o.size),capacity(o.capacity),
+    item_ctr(o.item_ctr),item_dtr(o.item_dtr),item_cpy(o.item_cpy),item_cmp(o.item_cmp),
+    free(&CV_VECTOR_TYPE_FCT(_free)),clear(&CV_VECTOR_TYPE_FCT(_clear)),shrink_to_fit(&CV_VECTOR_TYPE_FCT(_shrink_to_fit)),
+    swap(&CV_VECTOR_TYPE_FCT(_swap)),reserve(&CV_VECTOR_TYPE_FCT(_reserve)),
+    resize(&CV_VECTOR_TYPE_FCT(_resize)),resize_with(&CV_VECTOR_TYPE_FCT(_resize_with)),resize_with_by_val(&CV_VECTOR_TYPE_FCT(_resize_with_by_val)),
+    push_back(&CV_VECTOR_TYPE_FCT(_push_back)),push_back_by_val(&CV_VECTOR_TYPE_FCT(_push_back_by_val)),pop_back(&CV_VECTOR_TYPE_FCT(_pop_back)),
+    linear_search(&CV_VECTOR_TYPE_FCT(_linear_search)),linear_search_by_val(&CV_VECTOR_TYPE_FCT(_linear_search_by_val)),
+    binary_search(&CV_VECTOR_TYPE_FCT(_binary_search)),binary_search_by_val(&CV_VECTOR_TYPE_FCT(_binary_search_by_val)),
+    insert_at(&CV_VECTOR_TYPE_FCT(_insert_at)),insert_at_by_val(&CV_VECTOR_TYPE_FCT(_insert_at_by_val)),
+    insert_range_at(&CV_VECTOR_TYPE_FCT(_insert_range_at)),
+    insert_sorted(&CV_VECTOR_TYPE_FCT(_insert_sorted)),insert_sorted_by_val(&CV_VECTOR_TYPE_FCT(_insert_sorted_by_val)),
+    remove_at(&CV_VECTOR_TYPE_FCT(_remove_at)),remove_range_at(&CV_VECTOR_TYPE_FCT(_remove_range_at)),
+    cpy(&CV_VECTOR_TYPE_FCT(_cpy)),dbg_check(&CV_VECTOR_TYPE_FCT(_dbg_check))
+    {
+        o.v=NULL;*((size_t*)&o.size)=0;*((size_t*)&o.capacity)=0;
+    }
+
+    CV_VECTOR_TYPE& CV_VECTOR_TYPE::operator=(CV_VECTOR_TYPE&& o)    {
+        if (this != &o) {
+            CV_VECTOR_TYPE_FCT(_free)(this);
+            v=o.v;
+            *((size_t*)&size)=o.size;*((size_t*)&capacity)=o.capacity;
+            o.v=NULL;*((size_t*)&o.size)=0;*((size_t*)&o.capacity)=0;
+        }
+        return *this;
+    }
+#   endif
+
+    CV_VECTOR_TYPE::~CV_VECTOR_TYPE() {CV_VECTOR_TYPE_FCT(_free)(this);}
+
 #   endif
 
 
@@ -828,7 +881,6 @@ CV_API_DEF void CV_VECTOR_TYPE_FCT(_create)(CV_VECTOR_TYPE* v,int (*item_cmp)(co
 #undef CV_VECTOR_
 #undef C_VECTOR_FORCE_DECLARATION
 #undef C_VECTOR_IMPLEMENTATION
-CV_EXTERN_C_END
 /* ------------------------------------------------- */
 #undef CV_TYPE
 

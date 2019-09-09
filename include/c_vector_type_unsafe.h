@@ -52,10 +52,16 @@ freely, subject to the following restrictions:
 #ifndef C_VECTOR_TYPE_UNSAFE_H
 #define C_VECTOR_TYPE_UNSAFE_H
 
-#define C_VECTOR_TYPE_UNSAFE_VERSION            "1.04"
-#define C_VECTOR_TYPE_UNSAFE_VERSION_NUM        0104
+#define C_VECTOR_TYPE_UNSAFE_VERSION            "1.05"
+#define C_VECTOR_TYPE_UNSAFE_VERSION_NUM        0105
 
 /* HISTORY
+   C_VECTOR_TYPE_UNSAFE_VERSION_NUM 105
+   -> added c++ copy ctr, copy assignment and dtr (and move ctr plus move assignment if CV_HAS_MOVE_SEMANTICS is defined),
+      to ease porting code from c++ to c a bit more (but 'cvector_create(...)' is still necessary in c++ mode)
+   -> removed internal definitions CV_EXTERN_C_START, CV_EXTERN_C_END, CV_DEFAULT_STRUCT_INIT
+      Now code is no more 'extern C'
+
    C_VECTOR_TYPE_UNSAFE_VERSION_NUM 104
    -> renamed CV_VERSION to C_VECTOR_TYPE_UNSAFE_VERSION
    -> renamed CV_VERSION_NUM to C_VECTOR_TYPE_UNSAFE_VERSION_NUM
@@ -77,21 +83,12 @@ freely, subject to the following restrictions:
 
 */
 
-#undef CV_EXTERN_C_START
-#undef CV_EXTERN_C_END
-#undef CV_DEFAULT_STRUCT_INIT
 
-#ifdef __cplusplus
-#   define CV_EXTERN_C_START   extern "C"  {
-#   define CV_EXTERN_C_END  }
-#   define CV_DEFAULT_STRUCT_INIT {}
-#else
-#   define CV_EXTERN_C_START /* no-op */
-#   define CV_EXTERN_C_END /* no-op */
-#   define CV_DEFAULT_STRUCT_INIT {0}
+#if __cplusplus>=201103L
+#   undef CV_HAS_MOVE_SEMANTICS
+#   define CV_HAS_MOVE_SEMANTICS
 #endif
 
-CV_EXTERN_C_START
 
 #if (defined (NDEBUG) || defined (_NDEBUG))
 #   undef CV_NO_ASSERT
@@ -248,6 +245,17 @@ struct cvector {
 
 #   ifdef __cplusplus
     cvector();
+    cvector(const cvector& o);
+    cvector& operator=(const cvector& o);
+
+    template<typename T> CV_API_INL T& at(size_t i) {CV_ASSERT(i<size);T* p=(T*)v;return p[i];}
+    template<typename T> CV_API_INL const T& at(size_t i) const {CV_ASSERT(i<size);const T* p=(const T*)v;return p[i];}
+
+#   ifdef CV_HAS_MOVE_SEMANTICS
+    cvector(cvector&& o);
+    cvector& operator=(cvector&& o);
+#   endif
+    ~cvector();
 #   endif
 };
 #ifdef CV_ENABLE_DECLARATION_AND_DEFINITION
@@ -273,14 +281,11 @@ CV_API_DEC void cvector_dbg_check(const cvector* v);
 CV_API_DEC void cvector_create_with(cvector* v,size_t item_size_in_bytes,int (*item_cmp)(const void*,const void*),void (*item_ctr)(void*),void (*item_dtr)(void*),void (*item_cpy)(void*,const void*));
 CV_API_DEC void cvector_create(cvector* v,size_t item_size_in_bytes,int (*item_cmp)(const void*,const void*));
 #endif /* CV_ENABLE_DECLARATION_AND_DEFINITION */
-
-CV_EXTERN_C_END
 #endif /* C_VECTOR_TYPE_UNSAFE_H */
 
 #if (!defined(CV_ENABLE_DECLARATION_AND_DEFINITION) || defined(C_VECTOR_TYPE_UNSAFE_IMPLEMENTATION))
 #ifndef C_VECTOR_TYPE_UNSAFE_H_IMPLEMENTATION_GUARD
 #define C_VECTOR_TYPE_UNSAFE_H_IMPLEMENTATION_GUARD
-CV_EXTERN_C_START
 
 /* cv implementation */
 
@@ -313,10 +318,12 @@ CV_API_DEF void cvector_clear(cvector* v)	{
 }
 CV_API_DEF void cvector_swap(cvector* a,cvector* b)  {
     unsigned char t[sizeof(cvector)];
+    if (a!=b)   {
     CV_ASSERT(a && b);
-    memcpy(t,a,sizeof(cvector));
-    memcpy(a,b,sizeof(cvector));
-    memcpy(b,t,sizeof(cvector));
+        memcpy(t,a,sizeof(cvector));
+        memcpy(a,b,sizeof(cvector));
+        memcpy(b,t,sizeof(cvector));
+    }
 }
 CV_API_DEF void cvector_reserve(cvector* v,size_t size)	{
 	CV_ASSERT(v);    
@@ -539,6 +546,7 @@ CV_API_DEF void cvector_cpy(cvector* a,const cvector* b) {
     typedef int (*item_cmp_type)(const void*,const void*);
 	typedef void (*item_ctr_dtr_type)(void*);
 	typedef void (*item_cpy_type)(void*,const void*);
+    if (a==b) return;
     CV_ASSERT(a && b);
     /* bad init asserts */
     CV_ASSERT(!(a->v && a->capacity==0));
@@ -566,7 +574,7 @@ CV_API_DEF void cvector_cpy(cvector* a,const cvector* b) {
 }
 CV_API_DEF void cvector_shrink_to_fit(cvector* v)	{
     if (v)	{
-        cvector o=CV_DEFAULT_STRUCT_INIT;
+        cvector o;memset(&o,0,sizeof(cvector));
         cvector_cpy(&o,v); /* now 'o' is 'v' trimmed */
         cvector_free(v);
         cvector_swap(&o,v);
@@ -675,11 +683,53 @@ CV_API_DEF void cvector_create(cvector* v,size_t item_size_in_bytes,int (*item_c
     remove_at(&cvector_remove_at),remove_range_at(&cvector_remove_range_at),
     cpy(&cvector_cpy),dbg_check(&cvector_dbg_check)
     {}
+
+    cvector::cvector(const cvector& o) :
+    v(NULL),size(0),capacity(0),item_size_in_bytes(o.item_size_in_bytes),
+    item_cmp(o.item_cmp),item_ctr(o.item_ctr),item_dtr(o.item_dtr),item_cpy(o.item_cpy),
+    free(&cvector_free),clear(&cvector_clear),shrink_to_fit(&cvector_shrink_to_fit),swap(&cvector_swap),
+    reserve(&cvector_reserve),resize(&cvector_resize),resize_with(&cvector_resize_with),
+    push_back(&cvector_push_back),pop_back(&cvector_pop_back),
+    linear_search(&cvector_linear_search),binary_search(&cvector_binary_search),
+    insert_at(&cvector_insert_at),insert_range_at(&cvector_insert_range_at),insert_sorted(&cvector_insert_sorted),
+    remove_at(&cvector_remove_at),remove_range_at(&cvector_remove_range_at),
+    cpy(&cvector_cpy),dbg_check(&cvector_dbg_check)
+    {
+        cvector_cpy(this,&o);
+    }
+
+    cvector& cvector::operator=(const cvector& o)    {cvector_cpy(this,&o);return *this;}
+
+#   ifdef CV_HAS_MOVE_SEMANTICS
+    cvector::cvector(cvector&& o) :
+    v(o.v),size(o.size),capacity(o.capacity),item_size_in_bytes(o.item_size_in_bytes),
+    item_cmp(o.item_cmp),item_ctr(o.item_ctr),item_dtr(o.item_dtr),item_cpy(o.item_cpy),
+    free(&cvector_free),clear(&cvector_clear),shrink_to_fit(&cvector_shrink_to_fit),swap(&cvector_swap),
+    reserve(&cvector_reserve),resize(&cvector_resize),resize_with(&cvector_resize_with),
+    push_back(&cvector_push_back),pop_back(&cvector_pop_back),
+    linear_search(&cvector_linear_search),binary_search(&cvector_binary_search),
+    insert_at(&cvector_insert_at),insert_range_at(&cvector_insert_range_at),insert_sorted(&cvector_insert_sorted),
+    remove_at(&cvector_remove_at),remove_range_at(&cvector_remove_range_at),
+    cpy(&cvector_cpy),dbg_check(&cvector_dbg_check)
+    {
+        o.v=NULL;*((size_t*)&o.size)=0;*((size_t*)&o.capacity)=0;
+    }
+
+    cvector& cvector::operator=(cvector&& o)    {
+        if (this != &o) {
+            cvector_free(this);
+            v=o.v;
+            *((size_t*)&size)=o.size;*((size_t*)&capacity)=o.capacity;
+            o.v=NULL;*((size_t*)&o.size)=0;*((size_t*)&o.capacity)=0;
+        }
+        return *this;
+    }
+#   endif
+
+    cvector::~cvector() {cvector_free(this);}
 #endif
 
-CV_EXTERN_C_END
 #endif /* (!defined(CV_ENABLE_DECLARATION_AND_DEFINITION) || defined(C_VECTOR_TYPE_UNSAFE_IMPLEMENTATION)) */
-
 #endif /* C_VECTOR_TYPE_UNSAFE_H_IMPLEMENTATION_GUARD */
 
 

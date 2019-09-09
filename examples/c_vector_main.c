@@ -11,11 +11,15 @@ cl /O2 /MT /Tc c_vector_main.c /I"../include" /link /out:c_vector_main.exe user3
 */
 
 /*
-// compile as C++ [not really necessary (we could just scope code with 'extern "C"', like in <c_vector.h>)]
+// compile as C++ [not really necessary]
 // gcc
 gcc -O2 -x c++ -no-pie -fno-pie -I"../include" c_vector_main.c -o c_vector_main
 // or just
 g++ -O2 -no-pie -fno-pie -I"../include" c_vector_main.c -o c_vector_main
+// clang and mingw are gcc based (try using clang++ and x86_64-w64-mingw32-g++)
+
+// cl.exe (from Visual C++ 7.1 2003)
+cl /O2 /MT /Tp c_vector_main.c /I"../include" /EHsc /link /out:c_vector_main_vc.exe user32.lib kernel32.lib
 */
 
 /* Program Output:
@@ -78,7 +82,7 @@ v[0]={	20.000,	{[2:]	(10,3,3),(20,3,3)}}
 /*#define NO_SIMPLE_TEST*/
 /*#define NO_STRINGVECTOR_TEST*/
 /*#define NO_COMPLEXTEST*/
-
+/*#define NO_CPP_TEST*/
 
 #ifndef NO_SIMPLE_TEST
 /* The struct we'll use in a vector */
@@ -401,6 +405,75 @@ static void ComplexTest(void) {
 
 
 
+#ifndef NO_CPP_TEST
+#ifdef __cplusplus
+
+#ifndef C_VECTOR_int_H
+#   define CV_TYPE int
+#   include "c_vector.h"
+#endif /* C_VECTOR_int_H */
+
+#   include <vector> /* std::vector */
+
+void CppTest(void)    {
+    /* This makes only sense when porting existing C++ code to plain C. Some tips:
+       -> try to replace a single 'std::vector' with a 'cv_xxx', keep the code compilable (in C++) and repeat the process
+       -> std::vector<cv_xxx> works
+       -> a cv_xxx that includes (directly or indirectly) a std::vector (or any other STL container) does NOT work
+       -> 'cv_xxx_create(...)' in C++ can be omitted (if we don't need 'item_ctr', 'item_dtr', 'item_cpy' or 'item_cmp')
+       -> in C++ we can use 'v[i]' (i.e. operator[]) (but it does not work in plain C, so we'll need to convert it later)
+       -> cv_xxx::~cv_xxx() calls 'cv_xxx_free(...)' for us (but in plain C it's not available. It can be useful to remember that it's harmless to call 'cv_xxx_free(...)' multiple times)
+       -> some programmers prefer using the 'fake member function' syntax when porting code from std::vector
+    */
+
+    size_t i,j;
+    const int tmp[]={0,1,2,3,4,5,6,7,8,9};
+    cv_int v0,v1;
+    std::vector<cv_int> vstd;
+
+    printf("\nCPP MODE TEST:\n");
+
+    /* Note that in plain C, v0 and v1 are in a bad state (no initialization and no 'cv_int_create(...)' call); but in C++ it works */
+
+    for (i=0;i<5;i++) cv_int_push_back(&v0,&tmp[i]); /* or v0.push_back(&v0,&tmp[i]) in the 'fake member function' syntax */
+    cv_int_insert_range_at(&v1,&tmp[3],4,0);            /* or v1.insert_range_at(&v1,&tmp[3],4,0) in the 'fake member function' syntax */
+
+    for (i=0;i<v0.size;i++) printf("v0[%lu] = %d;\n",i,v0[i]);  /* Warning: 'operator[]' is C++ specific */
+    for (i=0;i<v1.size;i++) printf("v1[%lu] = %d;\n",i,v1[i]);
+
+    printf("cv_int_swap(&v1,&v0):\n");
+    cv_int_swap(&v1,&v0);
+
+    for (i=0;i<v0.size;i++) printf("v0[%lu] = %d;\n",i,v0[i]);
+    for (i=0;i<v1.size;i++) printf("v1[%lu] = %d;\n",i,v1[i]);
+
+    printf("std::vector<cv_int> test:\n");
+    vstd.push_back(v0);
+    vstd.push_back(v1);
+    vstd.push_back(v0);
+    vstd.push_back(v1);
+    vstd.push_back(v0);
+    vstd.push_back(v1);
+
+    for (j=0;j<vstd.size();j++) {
+        const cv_int& v = vstd[j];
+        printf("vstd[%lu]:\n",j);
+        for (i=0;i<v.size;i++) printf("\tv[%lu] = %d;\n",i,v[i]);
+    }
+
+    printf("cv_int_cpy(&v1,&v0):\n");
+    cv_int_cpy(&v1,&v0);
+
+    for (i=0;i<v0.size;i++) printf("v0[%lu] = %d;\n",i,v0[i]);
+    for (i=0;i<v1.size;i++) printf("v1[%lu] = %d;\n",i,v1[i]);
+
+    /* cv_int_free(...) is called for us at cv_int::~cv_int() */
+}
+#endif /* __cpusplus */
+#endif /* NO_CPP_TEST */
+
+
+
 int main(int argc,char* argv[])
 {
 #ifndef NO_SIMPLE_TEST
@@ -412,6 +485,12 @@ int main(int argc,char* argv[])
 #ifndef NO_COMPLEXTEST
     ComplexTest();
 #endif /* NO_COMPLEXTEST */
+
+#ifndef NO_CPP_TEST
+#ifdef __cplusplus
+    CppTest();
+#endif /* __cpusplus */
+#endif /* NO_CPP_TEST */
 
     return 1;
 }
