@@ -39,6 +39,7 @@ freely, subject to the following restrictions:
    CV_DISABLE_FAKE_MEMBER_FUNCTIONS     // faster with this defined
    CV_DISABLE_CLEARING_ITEM_MEMORY      // faster with this defined
    CV_ENABLE_DECLARATION_AND_DEFINITION // slower with this defined (but saves memory)
+   CV_NO_PLACEMENT_NEW                  // (c++ mode only) it does not define (unused) helper stuff like: CV_PLACEMENT_NEW, cpp_ctr,cpp_dtr,cpp_cpy
    CV_MALLOC
    CV_REALLOC
    CV_FREE
@@ -57,13 +58,16 @@ freely, subject to the following restrictions:
 #endif
 
 #ifndef C_VECTOR_VERSION
-#define C_VECTOR_VERSION        "1.10"
-#define C_VECTOR_VERSION_NUM    0110
+#define C_VECTOR_VERSION        "1.11"
+#define C_VECTOR_VERSION_NUM    0111
 #endif
 
 
 
 /* HISTORY:
+   C_VECTOR_VERSION_NUM 111
+   -> added optional stuff for c++ compilation: CV_PLACEMENT_NEW,cpp_ctr,cpp_dtr,cpp_cpy
+
    C_VECTOR_VERSION_NUM 110
    -> added c++ copy ctr, copy assignment and dtr (and move ctr plus move assignment if CV_HAS_MOVE_SEMANTICS is defined),
       to ease porting code from c++ to c a bit more
@@ -225,6 +229,25 @@ freely, subject to the following restrictions:
 #	endif
 #endif /* CV_ENABLE_DECLARATION_AND_DEFINITION */
 
+#ifdef __cplusplus
+/* helper stuff never used in this file */
+#   if (!defined(CV_PLACEMENT_NEW) && !defined(CV_NO_PLACEMENT_NEW))
+#       if ((defined(_MSC_VER) && _MSC_VER<=1310) || defined(CV_USE_SIMPLER_NEW_OVERLOAD))
+#           define CV_PLACEMENT_NEW(_PTR)  new(_PTR)        /* it might require <new> header inclusion */
+#       else
+            struct CVectorPlacementNewDummy {};
+            inline void* operator new(size_t, CVectorPlacementNewDummy, void* ptr) { return ptr; }
+            inline void operator delete(void*, CVectorPlacementNewDummy, void*) {}
+#           define CV_PLACEMENT_NEW(_PTR)  new(CVectorPlacementNewDummy() ,_PTR)
+#       endif /* _MSC_VER */
+#   endif /* CV_PLACEMENT_NEW */
+#   if (defined(CV_PLACEMENT_NEW) && !defined(CV_CPP_GUARD))
+#   define CV_CPP_GUARD
+    template <typename T> inline void cpp_ctr(T* v) {CV_PLACEMENT_NEW(v) T();}
+    template <typename T> inline void cpp_dtr(T* v) {v->T::~T();}
+    template <typename T> inline void cpp_cpy(T* a,const T* b) {*a=*b;}
+#   endif
+#endif
 
 #ifndef CV_XSTR
 #define CV_XSTR(s) CV_STR(s)

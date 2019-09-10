@@ -22,7 +22,7 @@ freely, subject to the following restrictions:
    misrepresented as being the original software.
 3. This notice may not be removed or altered from any source distribution.
 */
-/* USAGE: Please see the bundled "c_vector_and_hashtable_main.c". */
+/* USAGE: Please see the bundled "c_vector_type_unsafe_main.c". */
 
 
 /* GLOBAL DEFINITIONS: The following definitions (when used) must be set
@@ -32,6 +32,8 @@ freely, subject to the following restrictions:
    CV_DISABLE_CLEARING_ITEM_MEMORY      // faster with this defined
    CV_ENABLE_DECLARATION_AND_DEFINITION // when used, C_VECTOR_TYPE_UNSAFE_IMPLEMENTATION must be
                                         // defined before including this file in a single source (.c) file
+   CV_NO_PLACEMENT_NEW                  // (c++ mode only) it does not define (unused) helper stuff like: CV_PLACEMENT_NEW, cpp_ctr_tu,cpp_dtr_tu,cpp_cpy_tu
+
    CV_MALLOC
    CV_REALLOC
    CV_FREE
@@ -52,10 +54,13 @@ freely, subject to the following restrictions:
 #ifndef C_VECTOR_TYPE_UNSAFE_H
 #define C_VECTOR_TYPE_UNSAFE_H
 
-#define C_VECTOR_TYPE_UNSAFE_VERSION            "1.05"
-#define C_VECTOR_TYPE_UNSAFE_VERSION_NUM        0105
+#define C_VECTOR_TYPE_UNSAFE_VERSION            "1.06"
+#define C_VECTOR_TYPE_UNSAFE_VERSION_NUM        0106
 
 /* HISTORY
+   C_VECTOR_TYPE_UNSAFE_VERSION_NUM 106
+   -> added optional stuff for c++ compilation: CV_PLACEMENT_NEW,cpp_ctr_tu,cpp_dtr_tu,cpp_cpy_tu
+
    C_VECTOR_TYPE_UNSAFE_VERSION_NUM 105
    -> added c++ copy ctr, copy assignment and dtr (and move ctr plus move assignment if CV_HAS_MOVE_SEMANTICS is defined),
       to ease porting code from c++ to c a bit more (but 'cvector_create(...)' is still necessary in c++ mode)
@@ -88,7 +93,6 @@ freely, subject to the following restrictions:
 #   undef CV_HAS_MOVE_SEMANTICS
 #   define CV_HAS_MOVE_SEMANTICS
 #endif
-
 
 #if (defined (NDEBUG) || defined (_NDEBUG))
 #   undef CV_NO_ASSERT
@@ -156,6 +160,27 @@ freely, subject to the following restrictions:
 #		define CV_API_DEF /* no-op */
 #	endif
 #endif /* CV_ENABLE_DECLARATION_AND_DEFINITION */
+
+#ifdef __cplusplus
+/* helper stuff never used in this file */
+#   if (!defined(CV_PLACEMENT_NEW) && !defined(CV_NO_PLACEMENT_NEW))
+#       if ((defined(_MSC_VER) && _MSC_VER<=1310) || defined(CV_USE_SIMPLER_NEW_OVERLOAD))
+#           define CV_PLACEMENT_NEW(_PTR)  new(_PTR)        /* it might require <new> header inclusion */
+#       else
+            struct CVectorPlacementNewDummy {};
+            inline void* operator new(size_t, CVectorPlacementNewDummy, void* ptr) { return ptr; }
+            inline void operator delete(void*, CVectorPlacementNewDummy, void*) {}
+#           define CV_PLACEMENT_NEW(_PTR)  new(CVectorPlacementNewDummy() ,_PTR)
+#       endif /* _MSC_VER */
+#   endif /* CV_PLACEMENT_NEW */
+#   if (defined(CV_PLACEMENT_NEW) && !defined(CV_CPP_TU_GUARD))
+#   define CV_CPP_TU_GUARD
+    template<typename T> inline void cpp_ctr_tu(void* vv) {T* v=(T*) vv;CV_PLACEMENT_NEW(v) T();}
+    template<typename T> inline void cpp_dtr_tu(void* vv) {T* v=(T*) vv;v->T::~T();}
+    template<typename T> inline void cpp_cpy_tu(void* av,const void* bv) {T* a=(T*) av;const T* b=(const T*) bv;*a=*b;}
+#   endif
+#endif
+
 
 #ifndef CV_COMMON_FUNCTIONS_GUARD
 #define CV_COMMON_FUNCTIONS_GUARD

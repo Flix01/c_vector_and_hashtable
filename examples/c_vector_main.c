@@ -410,16 +410,23 @@ static void ComplexTest(void) {
 
 #ifndef C_VECTOR_int_H
 #   define CV_TYPE int
-#   include "c_vector.h"
+#   include "c_vector.h"    /* for 'cv_int' (the cvector.h alternative to std::vector<int>) */
 #endif /* C_VECTOR_int_H */
 
 #   include <vector> /* std::vector */
 
+typedef std::vector<int> stdvector_int;
+#ifndef C_VECTOR_stdvector_int_H
+#   define CV_TYPE stdvector_int
+#   include "c_vector.h"    /* for 'cv_stdvector_int' */
+#endif /* C_VECTOR_stdvector_int_H */
+
+
 void CppTest(void)    {
     /* This makes only sense when porting existing C++ code to plain C. Some tips:
        -> try to replace a single 'std::vector' with a 'cv_xxx', keep the code compilable (in C++) and repeat the process
-       -> std::vector<cv_xxx> works
-       -> a cv_xxx that includes (directly or indirectly) a std::vector (or any other STL container) does NOT work
+       -> a std::vector<cv_xxx> is easier to setup than a cv_stdvector_type
+       -> a cv_xxx that includes (directly or indirectly) a std::vector (or any other STL container) is a bit harder to make it work, so it's better to avoid it if possible
        -> 'cv_xxx_create(...)' in C++ can be omitted (if we don't need 'item_ctr', 'item_dtr', 'item_cpy' or 'item_cmp')
        -> in C++ we can use 'v[i]' (i.e. operator[]) (but it does not work in plain C, so we'll need to convert it later)
        -> cv_xxx::~cv_xxx() calls 'cv_xxx_free(...)' for us (but in plain C it's not available. It can be useful to remember that it's harmless to call 'cv_xxx_free(...)' multiple times)
@@ -447,7 +454,7 @@ void CppTest(void)    {
     for (i=0;i<v0.size;i++) printf("v0[%lu] = %d;\n",i,v0[i]);
     for (i=0;i<v1.size;i++) printf("v1[%lu] = %d;\n",i,v1[i]);
 
-    printf("std::vector<cv_int> test:\n");
+    printf("'std::vector<cv_int>' test:\n");
     vstd.push_back(v0);
     vstd.push_back(v1);
     vstd.push_back(v0);
@@ -457,8 +464,12 @@ void CppTest(void)    {
 
     for (j=0;j<vstd.size();j++) {
         const cv_int& v = vstd[j];
-        printf("vstd[%lu]:\n",j);
-        for (i=0;i<v.size;i++) printf("\tv[%lu] = %d;\n",i,v[i]);
+        printf("vstd[%lu] = {%lu:\t[",j,v.size);
+        for (i=0;i<v.size;i++) {
+            if (i>0) printf(",");
+            printf("%i",v[i]);
+        }
+        printf("]};\n");
     }
 
     printf("cv_int_cpy(&v1,&v0):\n");
@@ -467,7 +478,38 @@ void CppTest(void)    {
     for (i=0;i<v0.size;i++) printf("v0[%lu] = %d;\n",i,v0[i]);
     for (i=0;i<v1.size;i++) printf("v1[%lu] = %d;\n",i,v1[i]);
 
-    /* cv_int_free(...) is called for us at cv_int::~cv_int() */
+    /* in C++ mode ONLY, cv_int_free(...) is called for us at cv_int::~cv_int() */
+
+    {
+        std::vector<int> stdi;
+        cv_stdvector_int v;
+
+        printf("'cv_stdvector_int' test:\n");
+
+        /* 'cpp_ctr','cpp_dtr' and 'cpp_cpy' are provided by 'cvector.h' (in C++ mode only). */
+        cv_stdvector_int_create_with(&v,NULL,
+                            &cpp_ctr,
+                            &cpp_dtr,
+                            &cpp_cpy);
+
+        stdi.clear();stdi.push_back(3);stdi.push_back(2);stdi.push_back(1);
+        cv_stdvector_int_push_back(&v,&stdi);
+        stdi.clear();stdi.push_back(4);stdi.push_back(5);
+        cv_stdvector_int_push_back(&v,&stdi);
+        stdi.clear();stdi.push_back(6);
+        cv_stdvector_int_push_back(&v,&stdi);
+
+        for (j=0;j<v.size;j++)  {
+            const std::vector<int>& si = v[j];
+            printf("v[%lu] = {%lu:\t[",j,si.size());
+            for (i=0;i<si.size();i++) {
+                if (i>0) printf(",");
+                printf("%i",si[i]);
+            }
+            printf("]};\n");
+        }
+    }
+
 }
 #endif /* __cpusplus */
 #endif /* NO_CPP_TEST */

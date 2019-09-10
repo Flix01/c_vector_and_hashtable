@@ -355,12 +355,14 @@ static void ComplexTest(void) {
 
 #ifndef NO_CPP_TEST
 #ifdef __cplusplus
-#   include <vector>
+#   include <vector> /* std::vector */
+
+
 void CppTest(void)    {
     /* This makes only sense when porting existing C++ code to plain C. Some tips:
        -> try to replace a single 'std::vector' with a 'cvector', keep the code compilable (in C++) and repeat the process
-       -> std::vector<cvector> works
-       -> a cvector that includes (directly or indirectly) a std::vector (or any other STL container) does NOT work
+       -> a std::vector<cvector> is easier to setup than a cvector of std::vector<type>
+       -> a cvector that includes (directly or indirectly) a std::vector (or any other STL container) is a bit harder to make it work, so it's better to avoid it if possible
        -> 'cvector_create(...)' is still mandatory
        -> we can use 'v.at<type>(i)' as a quick replacement of STL operator[] (i.e. 'v[i]') (but it does not work in plain C, so we'll need to convert it later)
        -> cvector::~cvector() calls 'cvector_free(...)' for us (but in plain C it's not available. It can be useful to remember that it's harmless to call 'cvector_free(...)' multiple times)
@@ -399,8 +401,12 @@ void CppTest(void)    {
 
     for (j=0;j<vstd.size();j++) {
         const cvector& v = vstd[j];
-        printf("vstd[%lu]:\n",j);
-        for (i=0;i<v.size;i++) printf("\tv[%lu] = %d;\n",i,v.at<int>(i));
+        printf("vstd[%lu] = {%lu:\t[",j,v.size);
+        for (i=0;i<v.size;i++) {
+            if (i>0) printf(",");
+            printf("%i",v.at<int>(i));
+        }
+        printf("]};\n");
     }
 
     printf("cvector_cpy(&v1,&v0):\n");
@@ -409,7 +415,46 @@ void CppTest(void)    {
     for (i=0;i<v0.size;i++) printf("v0[%lu] = %d;\n",i,v0.at<int>(i));
     for (i=0;i<v1.size;i++) printf("v1[%lu] = %d;\n",i,v1.at<int>(i));
 
-    /* cvector_free(...) is called for us at cvector::~cvector() */
+
+    /* now v0 is a cvector of std::vector<int> */
+    cvector_push_back(&v0,&vstd);
+
+
+    /* in C++ mode ONLY, cvector_free(...) is called for us at cvector::~cvector() */
+
+
+    {
+        std::vector<int> stdi;
+        cvector v;
+
+        printf("cvector< std::vector<int> > test:\n");
+
+        /* 'cpp_ctr_tu','cpp_dtr_tu' and 'cpp_cpy_tu' are template functions that 'cvector_type_unsafe.h'
+           kindly provides for us (in C++ mode only). They can be used for every c++ class AFAIK
+           (the 'tu' suffix stands for 'type_unsafe' to avoid name clashes when used together with 'cvector.h')
+        */
+        cvector_create_with(&v,sizeof(std::vector<int>),NULL,
+                            &cpp_ctr_tu< std::vector<int> >,
+                            &cpp_dtr_tu< std::vector<int> >,
+                            &cpp_cpy_tu< std::vector<int> >);
+
+        stdi.clear();stdi.push_back(3);stdi.push_back(2);stdi.push_back(1);
+        cvector_push_back(&v,&stdi);
+        stdi.clear();stdi.push_back(4);stdi.push_back(5);
+        cvector_push_back(&v,&stdi);
+        stdi.clear();stdi.push_back(6);
+        cvector_push_back(&v,&stdi);
+
+        for (j=0;j<v.size;j++)  {
+            const std::vector<int>& si = v.at< std::vector<int> >(j);
+            printf("v[%lu] = {%lu:\t[",j,si.size());
+            for (i=0;i<si.size();i++) {
+                if (i>0) printf(",");
+                printf("%i",si[i]);
+            }
+            printf("]};\n");
+        }
+    }
 }
 #endif /* __cpusplus */
 #endif /* NO_CPP_TEST */
