@@ -42,6 +42,8 @@ freely, subject to the following restrictions:
    CH_DISABLE_FAKE_MEMBER_FUNCTIONS     // faster with this defined
    CH_DISABLE_CLEARING_ITEM_MEMORY      // faster with this defined
    CH_ENABLE_DECLARATION_AND_DEFINITION // slower with this defined (but saves memory)
+   CH_NO_PLACEMENT_NEW                  // (c++ mode only) it does not define (unused) helper stuff like: CH_PLACEMENT_NEW, cpp_ctr,cpp_dtr,cpp_cpy,cpp_cmp
+
    CH_MALLOC
    CH_REALLOC
    CH_FREE
@@ -64,12 +66,19 @@ freely, subject to the following restrictions:
 #endif
 
 #ifndef C_HASHTABLE_VERSION
-#define C_HASHTABLE_VERSION         "1.07"
-#define C_HASHTABLE_VERSION_NUM     0107
+#define C_HASHTABLE_VERSION         "1.08"
+#define C_HASHTABLE_VERSION_NUM     0108
 #endif
 
 
 /* HISTORY:
+   C_HASHTABLE_VERSION_NUM 0108:
+   -> added c++ copy ctr, copy assignment and dtr (and move ctr plus move assignment if CH_HAS_MOVE_SEMANTICS is defined),
+      to ease porting code from c++ to c a bit more (but 'ch_xxx_xxx_create(...)' is still necessary in c++ mode)
+   -> removed internal definitions CH_EXTERN_C_START, CH_EXTERN_C_END, CH_DEFAULT_STRUCT_INIT
+      Now code is no more 'extern C'
+   -> added optional stuff for c++ compilation: CH_PLACEMENT_NEW,cpp_ctr,cpp_dtr,cpp_cpy,cpp_cmp
+
    C_HASHTABLE_VERSION_NUM 0107:
    -> renamed CH_VERSION to C_HASHTABLE_VERSION
    -> renamed CH_VERSION_NUM to C_HASHTABLE_VERSION_NUM
@@ -147,23 +156,11 @@ freely, subject to the following restrictions:
 */
 
 /* ------------------------------------------------- */
-#undef CH_EXTERN_C_START
-#undef CH_EXTERN_C_END
-#undef CH_DEFAULT_STRUCT_INIT
-
-#ifdef __cplusplus
-#   undef CH_EXTERN_C_START
-#   define CH_EXTERN_C_START   extern "C"  {
-#   undef CH_EXTERN_C_END
-#   define CH_EXTERN_C_END  }
-#   define CH_DEFAULT_STRUCT_INIT {}
-#else
-#   define CH_EXTERN_C_START /* no-op */
-#   define CH_EXTERN_C_END /* no-op */
-#   define CH_DEFAULT_STRUCT_INIT {0}
+#if __cplusplus>=201103L
+#   undef CH_HAS_MOVE_SEMANTICS
+#   define CH_HAS_MOVE_SEMANTICS
 #endif
 
-CH_EXTERN_C_START
 
 #if (defined (NDEBUG) || defined (_NDEBUG))
 #   undef CH_NO_ASSERT
@@ -230,6 +227,27 @@ CH_EXTERN_C_START
 #		define CH_API_DEF /* no-op */
 #	endif
 #endif /* CH_ENABLE_DECLARATION_AND_DEFINITION */
+
+#ifdef __cplusplus
+/* helper stuff never used in this file */
+#   if (!defined(CH_PLACEMENT_NEW) && !defined(CH_NO_PLACEMENT_NEW))
+#       if ((defined(_MSC_VER) && _MSC_VER<=1310) || defined(CH_USE_SIMPLER_NEW_OVERLOAD))
+#           define CH_PLACEMENT_NEW(_PTR)  new(_PTR)        /* it might require <new> header inclusion */
+#       else
+            struct CHashtablePlacementNewDummy {};
+            inline void* operator new(size_t, CHashtablePlacementNewDummy, void* ptr) { return ptr; }
+            inline void operator delete(void*, CHashtablePlacementNewDummy, void*) {}
+#           define CH_PLACEMENT_NEW(_PTR)  new(CHashtablePlacementNewDummy() ,_PTR)
+#       endif /* _MSC_VER */
+#   endif /* CH_PLACEMENT_NEW */
+#   if (defined(CH_PLACEMENT_NEW) && !defined(CVH_CPP_GUARD))
+#   define CVH_CPP_GUARD
+    template<typename T> inline void cpp_ctr(T* v) {CH_PLACEMENT_NEW(v) T();}
+    template<typename T> inline void cpp_dtr(T* v) {v->T::~T();}
+    template<typename T> inline void cpp_cpy(T* a,const T* b) {*a=*b;}
+    template<typename T> inline int cpp_cmp(const T* a,const T* b) {return (*a)<(*b)?-1:((*a)>(*b)?1:0);}
+#   endif
+#endif
 
 #ifndef CH_XSTR
 #define CH_XSTR(s) CH_STR(s)
@@ -327,6 +345,8 @@ struct CH_HASHTABLE_TYPE {
 		const size_t capacity;	
 #       ifdef __cplusplus
         CH_VECTOR_TYPE() : v(NULL),size(0),capacity(0) {}
+        inline const CH_HASHTABLE_ITEM_TYPE& operator[](size_t i) const {CH_ASSERT(i<size);return v[i];}
+        inline CH_HASHTABLE_ITEM_TYPE& operator[](size_t i) {CH_ASSERT(i<size);return v[i];}
 #       endif
     } buckets[CH_NUM_BUCKETS];
 
@@ -349,6 +369,14 @@ struct CH_HASHTABLE_TYPE {
 #   endif
 #   ifdef __cplusplus
     CH_HASHTABLE_TYPE();
+    CH_HASHTABLE_TYPE(const CH_HASHTABLE_TYPE& o);
+    CH_HASHTABLE_TYPE& operator=(const CH_HASHTABLE_TYPE& o);
+
+#   ifdef CH_HAS_MOVE_SEMANTICS
+    CH_HASHTABLE_TYPE(CH_HASHTABLE_TYPE&& o);
+    CH_HASHTABLE_TYPE& operator=(CH_HASHTABLE_TYPE&& o);
+#   endif
+    ~CH_HASHTABLE_TYPE();
 #   endif
 };
 #ifdef __cplusplus
@@ -626,7 +654,7 @@ CH_API_DEF void CH_HASHTABLE_TYPE_FCT(_free)(CH_HASHTABLE_TYPE* ht)    {
         do    {
             CH_VECTOR_TYPE* b = &ht->buckets[i];
             CH_VECTOR_TYPE_FCT(_clear)(b,ht);
-            if (b->v) {ch_free(b->v);b->v=NULL;}
+            if (b->v) {ch_free(b->v);ht->buckets[i].v=NULL;}
             *((size_t*)&b->capacity)=0;
         }
         while (i++!=max_value);
@@ -822,11 +850,13 @@ CH_API_DEF int CH_HASHTABLE_TYPE_FCT(_dbg_check)(const CH_HASHTABLE_TYPE* ht) {
 }
 
 CH_API_DEF void CH_HASHTABLE_TYPE_FCT(_swap)(CH_HASHTABLE_TYPE* a,CH_HASHTABLE_TYPE* b)  {
-    CH_HASHTABLE_TYPE t=CH_DEFAULT_STRUCT_INIT;
-    CH_ASSERT(a && b);
-    memcpy(&t,a,sizeof(CH_HASHTABLE_TYPE));
-    memcpy(a,b,sizeof(CH_HASHTABLE_TYPE));
-    memcpy(b,&t,sizeof(CH_HASHTABLE_TYPE));
+    unsigned char t[sizeof(CH_HASHTABLE_TYPE)];
+    if (a!=b)   {
+        CH_ASSERT(a && b);
+        memcpy(&t,a,sizeof(CH_HASHTABLE_TYPE));
+        memcpy(a,b,sizeof(CH_HASHTABLE_TYPE));
+        memcpy(b,&t,sizeof(CH_HASHTABLE_TYPE));
+    }
 }
 CH_API_DEF void CH_HASHTABLE_TYPE_FCT(_cpy)(CH_HASHTABLE_TYPE* a,const CH_HASHTABLE_TYPE* b) {
     size_t i;
@@ -836,6 +866,7 @@ CH_API_DEF void CH_HASHTABLE_TYPE_FCT(_cpy)(CH_HASHTABLE_TYPE* a,const CH_HASHTA
     typedef void (*key_cpy_type)(CH_KEY_TYPE*,const CH_KEY_TYPE*);
     typedef void (*value_ctr_dtr_type)(CH_VALUE_TYPE*);
     typedef void (*value_cpy_type)(CH_VALUE_TYPE*,const CH_VALUE_TYPE*);
+    if (a==b) return;
     CH_ASSERT(a && b);
     *((key_hash_type*)&a->key_hash) = b->key_hash;
     *((key_cmp_type*)&a->key_cmp) = b->key_cmp;
@@ -865,7 +896,7 @@ CH_API_DEF void CH_HASHTABLE_TYPE_FCT(_cpy)(CH_HASHTABLE_TYPE* a,const CH_HASHTA
 }
 CH_API_DEF void CH_HASHTABLE_TYPE_FCT(_shrink_to_fit)(CH_HASHTABLE_TYPE* ht)   {
     if (ht)	{
-        CH_HASHTABLE_TYPE o=CH_DEFAULT_STRUCT_INIT;
+        CH_HASHTABLE_TYPE o;
         memset(&o,0,sizeof(CH_HASHTABLE_TYPE));
         CH_HASHTABLE_TYPE_FCT(_cpy)(&o,ht); /* now 'o' is 'v' trimmed */
         CH_HASHTABLE_TYPE_FCT(_free)(ht);
@@ -950,6 +981,65 @@ CH_API_DEF void CH_HASHTABLE_TYPE_FCT(_create)(CH_HASHTABLE_TYPE* ht,ch_hash_uin
         dbg_check(&CH_HASHTABLE_TYPE_FCT(_dbg_check)),
         swap(&CH_HASHTABLE_TYPE_FCT(_swap)),cpy(&CH_HASHTABLE_TYPE_FCT(_cpy))
     {}
+    CH_HASHTABLE_TYPE::CH_HASHTABLE_TYPE(const CH_HASHTABLE_TYPE& o) :
+        key_ctr(o.key_ctr),key_dtr(o.key_dtr),key_cpy(o.key_cpy),key_cmp(o.key_cmp),key_hash(o.key_hash),
+        value_ctr(o.value_ctr),value_dtr(o.value_dtr),value_cpy(o.value_cpy),initial_bucket_capacity(o.initial_bucket_capacity),
+        clear(&CH_HASHTABLE_TYPE_FCT(_clear)),free(&CH_HASHTABLE_TYPE_FCT(_free)),shrink_to_fit(&CH_HASHTABLE_TYPE_FCT(_shrink_to_fit)),
+        get_or_insert(&CH_HASHTABLE_TYPE_FCT(_get_or_insert)),get_or_insert_by_val(&CH_HASHTABLE_TYPE_FCT(_get_or_insert_by_val)),
+        get(&CH_HASHTABLE_TYPE_FCT(_get)),get_by_val(&CH_HASHTABLE_TYPE_FCT(_get_by_val)),
+        get_const(&CH_HASHTABLE_TYPE_FCT(_get_const)),get_const_by_val(&CH_HASHTABLE_TYPE_FCT(_get_const_by_val)),
+        remove(&CH_HASHTABLE_TYPE_FCT(_remove)),remove_by_val(&CH_HASHTABLE_TYPE_FCT(_remove_by_val)),
+        get_num_items(&CH_HASHTABLE_TYPE_FCT(_get_num_items)),
+        dbg_check(&CH_HASHTABLE_TYPE_FCT(_dbg_check)),
+        swap(&CH_HASHTABLE_TYPE_FCT(_swap)),cpy(&CH_HASHTABLE_TYPE_FCT(_cpy))
+    {
+        CH_HASHTABLE_TYPE_FCT(_cpy)(this,&o);
+    }
+
+    CH_HASHTABLE_TYPE& CH_HASHTABLE_TYPE::operator=(const CH_HASHTABLE_TYPE& o)    {CH_HASHTABLE_TYPE_FCT(_cpy)(this,&o);return *this;}
+
+#   ifdef CH_HAS_MOVE_SEMANTICS
+    CH_HASHTABLE_TYPE::CH_HASHTABLE_TYPE(CH_HASHTABLE_TYPE&& o) :
+        key_ctr(o.key_ctr),key_dtr(o.key_dtr),key_cpy(o.key_cpy),key_cmp(o.key_cmp),key_hash(o.key_hash),
+        value_ctr(o.value_ctr),value_dtr(o.value_dtr),value_cpy(o.value_cpy),initial_bucket_capacity(o.initial_bucket_capacity),
+        clear(&CH_HASHTABLE_TYPE_FCT(_clear)),free(&CH_HASHTABLE_TYPE_FCT(_free)),shrink_to_fit(&CH_HASHTABLE_TYPE_FCT(_shrink_to_fit)),
+        get_or_insert(&CH_HASHTABLE_TYPE_FCT(_get_or_insert)),get_or_insert_by_val(&CH_HASHTABLE_TYPE_FCT(_get_or_insert_by_val)),
+        get(&CH_HASHTABLE_TYPE_FCT(_get)),get_by_val(&CH_HASHTABLE_TYPE_FCT(_get_by_val)),
+        get_const(&CH_HASHTABLE_TYPE_FCT(_get_const)),get_const_by_val(&CH_HASHTABLE_TYPE_FCT(_get_const_by_val)),
+        remove(&CH_HASHTABLE_TYPE_FCT(_remove)),remove_by_val(&CH_HASHTABLE_TYPE_FCT(_remove_by_val)),
+        get_num_items(&CH_HASHTABLE_TYPE_FCT(_get_num_items)),
+        dbg_check(&CH_HASHTABLE_TYPE_FCT(_dbg_check)),
+        swap(&CH_HASHTABLE_TYPE_FCT(_swap)),cpy(&CH_HASHTABLE_TYPE_FCT(_cpy))
+    {
+        size_t i;
+        for (i=0;i<CH_NUM_BUCKETS;i++) {
+            CH_VECTOR_TYPE& d = buckets[i];
+            CH_VECTOR_TYPE& s = o.buckets[i];
+            d.v=s.v;
+            *((size_t*)&d.size)=s.size;*((size_t*)&d.capacity)=s.capacity;
+            s.v=NULL;
+            *((size_t*)&s.size)=0;*((size_t*)&s.capacity)=0;
+        }
+    }
+
+    CH_HASHTABLE_TYPE& CH_HASHTABLE_TYPE::operator=(CH_HASHTABLE_TYPE&& o)    {
+        if (this != &o) {
+            size_t i;
+            CH_HASHTABLE_TYPE_FCT(_free)(this);
+            for (i=0;i<CH_NUM_BUCKETS;i++) {
+                CH_VECTOR_TYPE& d = buckets[i];
+                CH_VECTOR_TYPE& s = o.buckets[i];
+                d.v=s.v;
+                *((size_t*)&d.size)=s.size;*((size_t*)&d.capacity)=s.capacity;
+                s.v=NULL;
+                *((size_t*)&s.size)=0;*((size_t*)&s.capacity)=0;
+            }
+        }
+        return *this;
+    }
+#   endif
+
+    CH_HASHTABLE_TYPE::~CH_HASHTABLE_TYPE() {CH_HASHTABLE_TYPE_FCT(_free)(this);}
 #endif
 
 #endif /* (!defined(CH_ENABLE_DECLARATION_AND_DEFINITION) || defined(C_HASHTABLE_IMPLEMENTATION)) */
@@ -971,7 +1061,6 @@ CH_API_DEF void CH_HASHTABLE_TYPE_FCT(_create)(CH_HASHTABLE_TYPE* ht,ch_hash_uin
 #undef CH_NUM_BUCKETS
 #undef C_HASHTABLE_FORCE_DECLARATION
 #undef C_HASHTABLE_IMPLEMENTATION
-CH_EXTERN_C_END
 /* ------------------------------------------------- */
 #undef CH_KEY_TYPE
 #undef CH_VALUE_TYPE

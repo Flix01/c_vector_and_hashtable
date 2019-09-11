@@ -35,6 +35,8 @@ freely, subject to the following restrictions:
    CH_DISABLE_CLEARING_ITEM_MEMORY      // faster with this defined
    CH_ENABLE_DECLARATION_AND_DEFINITION // when used, C_HASHTABLE_TYPE_UNSAFE_IMPLEMENTATION must be
                                         // defined before including this file in a single source (.c) file
+   CH_NO_PLACEMENT_NEW                  // (c++ mode only) it does not define (unused) helper stuff like: CH_PLACEMENT_NEW, cpp_ctr_tu,cpp_dtr_tu,cpp_cpy_tu,cpp_cmp_tu
+
    CH_MALLOC
    CH_REALLOC
    CH_FREE
@@ -52,10 +54,17 @@ freely, subject to the following restrictions:
 #ifndef C_HASHTABLE_TYPE_UNSAFE_H
 #define C_HASHTABLE_TYPE_UNSAFE_H
 
-#define C_HASHTABLE_TYPE_UNSAFE_VERSION         "1.01"
-#define C_HASHTABLE_TYPE_UNSAFE_VERSION_NUM     0101
+#define C_HASHTABLE_TYPE_UNSAFE_VERSION         "1.02"
+#define C_HASHTABLE_TYPE_UNSAFE_VERSION_NUM     0102
 
 /* HISTORY:
+   C_HASHTABLE_TYPE_UNSAFE_VERSION_NUM  102
+   -> added c++ copy ctr, copy assignment and dtr (and move ctr plus move assignment if CH_HAS_MOVE_SEMANTICS is defined),
+      to ease porting code from c++ to c a bit more (but 'chashtable_create(...)' is still necessary in c++ mode)
+   -> removed internal definitions CH_EXTERN_C_START, CH_EXTERN_C_END, CH_DEFAULT_STRUCT_INIT
+      Now code is no more 'extern C'
+   -> added optional stuff for c++ compilation: CH_PLACEMENT_NEW,cpp_ctr_tu,cpp_dtr_tu,cpp_cpy_tu,cpp_cmp_tu
+
    C_HASHTABLE_TYPE_UNSAFE_VERSION_NUM  101
    -> renamed CH_VERSION to C_HASHTABLE_TYPE_UNSAFE_VERSION
    -> renamed CH_VERSION_NUM to C_HASHTABLE_TYPE_UNSAFE_VERSION_NUM
@@ -68,21 +77,11 @@ freely, subject to the following restrictions:
    -> added a hashtable ctr to ease compilation in c++ mode
 */
 
-#undef CH_EXTERN_C_START
-#undef CH_EXTERN_C_END
-#undef CH_DEFAULT_STRUCT_INIT
-
-#ifdef __cplusplus
-#   define CH_EXTERN_C_START   extern "C"  {
-#   define CH_EXTERN_C_END  }
-#   define CH_DEFAULT_STRUCT_INIT {}
-#else
-#   define CH_EXTERN_C_START /* no-op */
-#   define CH_EXTERN_C_END /* no-op */
-#   define CH_DEFAULT_STRUCT_INIT {0}
+#if __cplusplus>=201103L
+#   undef CH_HAS_MOVE_SEMANTICS
+#   define CH_HAS_MOVE_SEMANTICS
 #endif
 
-CH_EXTERN_C_START
 
 #if (defined (NDEBUG) || defined (_NDEBUG))
 #   undef CH_NO_ASSERT
@@ -150,6 +149,27 @@ CH_EXTERN_C_START
 #		define CH_API_DEF /* no-op */
 #	endif
 #endif /* CH_ENABLE_DECLARATION_AND_DEFINITION */
+
+#ifdef __cplusplus
+/* helper stuff never used in this file */
+#   if (!defined(CH_PLACEMENT_NEW) && !defined(CH_NO_PLACEMENT_NEW))
+#       if ((defined(_MSC_VER) && _MSC_VER<=1310) || defined(CH_USE_SIMPLER_NEW_OVERLOAD))
+#           define CH_PLACEMENT_NEW(_PTR)  new(_PTR)        /* it might require <new> header inclusion */
+#       else
+            struct CHashtablePlacementNewDummy {};
+            inline void* operator new(size_t, CHashtablePlacementNewDummy, void* ptr) { return ptr; }
+            inline void operator delete(void*, CHashtablePlacementNewDummy, void*) {}
+#           define CH_PLACEMENT_NEW(_PTR)  new(CHashtablePlacementNewDummy() ,_PTR)
+#       endif /* _MSC_VER */
+#   endif /* CH_PLACEMENT_NEW */
+#   if (defined(CH_PLACEMENT_NEW) && !defined(CVH_CPP_TU_GUARD))
+#   define CVH_CPP_TU_GUARD
+    template<typename T> inline void cpp_ctr_tu(void* vv) {T* v=(T*) vv;CH_PLACEMENT_NEW(v) T();}
+    template<typename T> inline void cpp_dtr_tu(void* vv) {T* v=(T*) vv;v->T::~T();}
+    template<typename T> inline void cpp_cpy_tu(void* av,const void* bv) {T* a=(T*) av;const T* b=(const T*) bv;*a=*b;}
+    template<typename T> inline int cpp_cmp_tu(const void* av,const void* bv) {const T* a=(const T*) av;const T* b=(const T*) bv;return (*a)<(*b)?-1:((*a)>(*b)?1:0);}
+#   endif
+#endif
 
 
 #ifndef CH_COMMON_FUNCTIONS_GUARD
@@ -297,6 +317,9 @@ struct chashtable {
         const size_t capacity;
 #       ifdef __cplusplus
         chvector() : k(NULL),v(NULL),size(0),capacity(0) {}
+        template<typename K> inline const K& key_at(size_t i) const {CH_ASSERT(i<size);const K* p=(const K*) k;return p[i];}
+        template<typename V> inline V& value_at(size_t i) {CH_ASSERT(i<size);V* p=(V*) v;return p[i];}
+        template<typename V> inline const V& value_at(size_t i) const {CH_ASSERT(i<size);const V* p=(const V*) v;return p[i];}
 #       endif
     } buckets[CH_NUM_USED_BUCKETS];
 
@@ -316,7 +339,16 @@ struct chashtable {
 
 #   ifdef __cplusplus
     chashtable();
+    chashtable(const chashtable& o);
+    chashtable& operator=(const chashtable& o);
+
+#   ifdef CH_HAS_MOVE_SEMANTICS
+    chashtable(chashtable&& o);
+    chashtable& operator=(chashtable&& o);
 #   endif
+    ~chashtable();
+#   endif
+
 };
 #ifdef __cplusplus
 typedef chashtable::chvector chvector;
@@ -350,7 +382,6 @@ CH_API_DEC void chashtable_create_with(
 CH_API_DEC void chashtable_create)(chashtable* ht,size_t key_size_in_bytes,size_t value_size_in_bytes,ch_hash_uint (*key_hash)(const void*),int (*key_cmp) (const void*,const void*),size_t initial_bucket_capacity);
 #endif /* CH_ENABLE_DECLARATION_AND_DEFINITION */
 
-CH_EXTERN_C_END
 #endif /* C_HASHTABLE_TYPE_UNSAFE_H */
 
 
@@ -359,7 +390,6 @@ CH_EXTERN_C_END
 #if (!defined(CH_ENABLE_DECLARATION_AND_DEFINITION) || defined(C_HASHTABLE_TYPE_UNSAFE_IMPLEMENTATION))
 #ifndef C_HASHTABLE_TYPE_UNSAFE_H_IMPLEMENTATION_GUARD
 #define C_HASHTABLE_TYPE_UNSAFE_H_IMPLEMENTATION_GUARD
-CH_EXTERN_C_START
 
 /* ch implementation */
 
@@ -515,7 +545,7 @@ CH_API_DEF void chashtable_free(chashtable* ht)    {
         do    {
             chvector* b = &ht->buckets[i];
             chvector_clear(b,ht);
-            if (b->k) {ch_free(b->k);b->k=b->v=NULL;}
+            if (b->k) {ch_free(b->k);ht->buckets[i].k=NULL;ht->buckets[i].v=NULL;}
             *((size_t*)&b->capacity)=0;
         }
         while (i++!=max_value);
@@ -708,11 +738,13 @@ CH_API_DEF int chashtable_dbg_check(const chashtable* ht) {
 }
 
 CH_API_DEF void chashtable_swap(chashtable* a,chashtable* b)  {
-    chashtable t = CH_DEFAULT_STRUCT_INIT;
-    CH_ASSERT(a && b);
-    memcpy(&t,a,sizeof(chashtable));
-    memcpy(a,b,sizeof(chashtable));
-    memcpy(b,&t,sizeof(chashtable));
+    unsigned char t[sizeof(chashtable)];
+    if (a!=b)   {
+        CH_ASSERT(a && b);
+        memcpy(&t,a,sizeof(chashtable));
+        memcpy(a,b,sizeof(chashtable));
+        memcpy(b,&t,sizeof(chashtable));
+    }
 }
 CH_API_DEF void chashtable_cpy(chashtable* a,const chashtable* b) {
     size_t i;
@@ -722,6 +754,7 @@ CH_API_DEF void chashtable_cpy(chashtable* a,const chashtable* b) {
     typedef void (*key_cpy_type)(void*,const void*);
     typedef void (*value_ctr_dtr_type)(void*);
     typedef void (*value_cpy_type)(void*,const void*);
+    if (a==b) return;
     CH_ASSERT(a && b);
 	if (a->key_size_in_bytes==0 && a->value_size_in_bytes==0)	{
         *((size_t*)&a->key_size_in_bytes)  =b->key_size_in_bytes;
@@ -730,7 +763,7 @@ CH_API_DEF void chashtable_cpy(chashtable* a,const chashtable* b) {
 	CH_ASSERT(a->key_size_in_bytes==b->key_size_in_bytes);
 	CH_ASSERT(a->value_size_in_bytes==b->value_size_in_bytes);
     if (a->key_size_in_bytes!=b->key_size_in_bytes || a->value_size_in_bytes!=b->value_size_in_bytes)   {
-#       ifndef CV_NO_STDIO
+#       ifndef CH_NO_STDIO
         fprintf(stderr,"[chashtable_cpy] Error: two hashtables with different 'key_size_in_bytes' (%lu and %lu) or 'value_size_in_bytes' (%lu and %lu) can't be copied.\n",a->key_size_in_bytes,b->key_size_in_bytes,a->value_size_in_bytes,b->value_size_in_bytes);
 #       endif
         return;
@@ -764,7 +797,7 @@ CH_API_DEF void chashtable_cpy(chashtable* a,const chashtable* b) {
 }
 CH_API_DEF void chashtable_shrink_to_fit(chashtable* ht)   {
     if (ht)	{
-        chashtable o = CH_DEFAULT_STRUCT_INIT;
+        chashtable o;
         memset(&o,0,sizeof(chashtable));
         chashtable_cpy(&o,ht); /* now 'o' is 'v' trimmed */
         chashtable_free(ht);
@@ -830,19 +863,71 @@ CH_API_DEF void chashtable_create(chashtable* ht,size_t key_size_in_bytes,size_t
     chashtable_create_with(ht,key_size_in_bytes,value_size_in_bytes,key_hash,key_cmp,NULL,NULL,NULL,NULL,NULL,NULL,initial_bucket_capacity);
 }
 
-#   ifdef __cplusplus
+#ifdef __cplusplus
     chashtable::chashtable() :
         key_size_in_bytes(0),value_size_in_bytes(0),
         key_ctr(NULL),key_dtr(NULL),key_cpy(NULL),key_cmp(NULL),key_hash(NULL),
-        value_ctr(NULL),value_dtr(NULL),value_cpy(NULL),
+        value_ctr(NULL),value_dtr(NULL),value_cpy(NULL),initial_bucket_capacity(1),
         clear(&chashtable_clear),free(&chashtable_free),shrink_to_fit(&chashtable_shrink_to_fit),
         get_or_insert(&chashtable_get_or_insert),get(&chashtable_get),get_const(&chashtable_get_const),
         remove(&chashtable_remove),get_num_items(&chashtable_get_num_items),
         dbg_check(&chashtable_dbg_check),swap(&chashtable_swap),cpy(&chashtable_cpy)
     {}
+
+    chashtable::chashtable(const chashtable& o) :
+    key_size_in_bytes(o.key_size_in_bytes),value_size_in_bytes(o.value_size_in_bytes),
+    key_ctr(o.key_ctr),key_dtr(o.key_dtr),key_cpy(o.key_cpy),key_cmp(o.key_cmp),key_hash(o.key_hash),
+    value_ctr(o.value_ctr),value_dtr(o.value_dtr),value_cpy(o.value_cpy),initial_bucket_capacity(o.initial_bucket_capacity),
+    clear(&chashtable_clear),free(&chashtable_free),shrink_to_fit(&chashtable_shrink_to_fit),
+    get_or_insert(&chashtable_get_or_insert),get(&chashtable_get),get_const(&chashtable_get_const),
+    remove(&chashtable_remove),get_num_items(&chashtable_get_num_items),
+    dbg_check(&chashtable_dbg_check),swap(&chashtable_swap),cpy(&chashtable_cpy)
+    {
+        chashtable_cpy(this,&o);
+    }
+
+    chashtable& chashtable::operator=(const chashtable& o)    {chashtable_cpy(this,&o);return *this;}
+
+#   ifdef CH_HAS_MOVE_SEMANTICS
+    chashtable::chashtable(chashtable&& o) :
+    key_size_in_bytes(o.key_size_in_bytes),value_size_in_bytes(o.value_size_in_bytes),
+    key_ctr(o.key_ctr),key_dtr(o.key_dtr),key_cpy(o.key_cpy),key_cmp(o.key_cmp),key_hash(o.key_hash),
+    value_ctr(o.value_ctr),value_dtr(o.value_dtr),value_cpy(o.value_cpy),initial_bucket_capacity(o.initial_bucket_capacity),
+    clear(&chashtable_clear),free(&chashtable_free),shrink_to_fit(&chashtable_shrink_to_fit),
+    get_or_insert(&chashtable_get_or_insert),get(&chashtable_get),get_const(&chashtable_get_const),
+    remove(&chashtable_remove),get_num_items(&chashtable_get_num_items),
+    dbg_check(&chashtable_dbg_check),swap(&chashtable_swap),cpy(&chashtable_cpy)
+    {
+        size_t i;
+        for (i=0;i<CH_NUM_USED_BUCKETS;i++) {
+            chvector& d = buckets[i];
+            chvector& s = o.buckets[i];
+            d.k=s.k;d.v=s.v;
+            *((size_t*)&d.size)=s.size;*((size_t*)&d.capacity)=s.capacity;
+            s.k=NULL;s.v=NULL;
+            *((size_t*)&s.size)=0;*((size_t*)&s.capacity)=0;
+        }
+    }
+
+    chashtable& chashtable::operator=(chashtable&& o)    {
+        if (this != &o) {
+            size_t i;
+            chashtable_free(this);
+            for (i=0;i<CH_NUM_USED_BUCKETS;i++) {
+                chvector& d = buckets[i];
+                chvector& s = o.buckets[i];
+                d.k=s.k;d.v=s.v;
+                *((size_t*)&d.size)=s.size;*((size_t*)&d.capacity)=s.capacity;
+                s.k=NULL;s.v=NULL;
+                *((size_t*)&s.size)=0;*((size_t*)&s.capacity)=0;
+            }
+        }
+        return *this;
+    }
 #   endif
 
-CH_EXTERN_C_END
+    chashtable::~chashtable() {chashtable_free(this);}
+#endif
 
 #endif /* C_HASHTABLE_TYPE_UNSAFE_H_IMPLEMENTATION_GUARD */
 #endif /* (!defined(CH_ENABLE_DECLARATION_AND_DEFINITION) || defined(C_HASHTABLE_TYPE_UNSAFE_IMPLEMENTATION)) */

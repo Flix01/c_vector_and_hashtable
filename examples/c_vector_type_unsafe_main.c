@@ -416,10 +416,6 @@ void CppTest(void)    {
     for (i=0;i<v1.size;i++) printf("v1[%lu] = %d;\n",i,v1.at<int>(i));
 
 
-    /* now v0 is a cvector of std::vector<int> */
-    cvector_push_back(&v0,&vstd);
-
-
     /* in C++ mode ONLY, cvector_free(...) is called for us at cvector::~cvector() */
 
 

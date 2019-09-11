@@ -32,7 +32,7 @@ freely, subject to the following restrictions:
    CV_DISABLE_CLEARING_ITEM_MEMORY      // faster with this defined
    CV_ENABLE_DECLARATION_AND_DEFINITION // when used, C_VECTOR_TYPE_UNSAFE_IMPLEMENTATION must be
                                         // defined before including this file in a single source (.c) file
-   CV_NO_PLACEMENT_NEW                  // (c++ mode only) it does not define (unused) helper stuff like: CV_PLACEMENT_NEW, cpp_ctr_tu,cpp_dtr_tu,cpp_cpy_tu
+   CV_NO_PLACEMENT_NEW                  // (c++ mode only) it does not define (unused) helper stuff like: CV_PLACEMENT_NEW, cpp_ctr_tu,cpp_dtr_tu,cpp_cpy_tu,cpp_cmp_tu
 
    CV_MALLOC
    CV_REALLOC
@@ -54,10 +54,13 @@ freely, subject to the following restrictions:
 #ifndef C_VECTOR_TYPE_UNSAFE_H
 #define C_VECTOR_TYPE_UNSAFE_H
 
-#define C_VECTOR_TYPE_UNSAFE_VERSION            "1.06"
-#define C_VECTOR_TYPE_UNSAFE_VERSION_NUM        0106
+#define C_VECTOR_TYPE_UNSAFE_VERSION            "1.07"
+#define C_VECTOR_TYPE_UNSAFE_VERSION_NUM        0107
 
 /* HISTORY
+   C_VECTOR_TYPE_UNSAFE_VERSION_NUM 106
+   -> added optional stuff for c++ compilation: cpp_cmp_tu (never used nor tested)
+
    C_VECTOR_TYPE_UNSAFE_VERSION_NUM 106
    -> added optional stuff for c++ compilation: CV_PLACEMENT_NEW,cpp_ctr_tu,cpp_dtr_tu,cpp_cpy_tu
 
@@ -173,11 +176,12 @@ freely, subject to the following restrictions:
 #           define CV_PLACEMENT_NEW(_PTR)  new(CVectorPlacementNewDummy() ,_PTR)
 #       endif /* _MSC_VER */
 #   endif /* CV_PLACEMENT_NEW */
-#   if (defined(CV_PLACEMENT_NEW) && !defined(CV_CPP_TU_GUARD))
-#   define CV_CPP_TU_GUARD
+#   if (defined(CV_PLACEMENT_NEW) && !defined(CVH_CPP_TU_GUARD))
+#   define CVH_CPP_TU_GUARD
     template<typename T> inline void cpp_ctr_tu(void* vv) {T* v=(T*) vv;CV_PLACEMENT_NEW(v) T();}
     template<typename T> inline void cpp_dtr_tu(void* vv) {T* v=(T*) vv;v->T::~T();}
     template<typename T> inline void cpp_cpy_tu(void* av,const void* bv) {T* a=(T*) av;const T* b=(const T*) bv;*a=*b;}
+    template<typename T> inline int cpp_cmp_tu(const void* av,const void* bv) {const T* a=(const T*) av;const T* b=(const T*) bv;return (*a)<(*b)?-1:((*a)>(*b)?1:0);}
 #   endif
 #endif
 

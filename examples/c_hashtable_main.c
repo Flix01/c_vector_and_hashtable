@@ -11,11 +11,15 @@ cl /O2 /MT /Tc c_hashtable_main.c /I"../include" /link /out:c_hashtable_main.exe
 */
 
 /*
-// compile as C++ [not really necessary (we could just scope code with 'extern "C"', like in <c_vector.h>)]
+// compile as C++ [not really necessary]
 // gcc
 gcc -O2 -x c++ -no-pie -fno-pie -I"../include" c_hashtable_main.c -o c_hashtable_main
 // or just
 g++ -O2 -no-pie -fno-pie -I"../include" c_hashtable_main.c -o c_hashtable_main
+// clang and mingw are gcc based (try using clang++ and x86_64-w64-mingw32-g++)
+
+// cl.exe (from Visual C++ 7.1 2003)
+cl /O2 /MT /Tp c_hashtable_main.c /I"../include" /EHsc /link /out:c_hashtable_main_vc.exe user32.lib kernel32.lib
 */
 
 /* Program Output:
@@ -63,6 +67,7 @@ Fetched item ht["name"]=["John"].
 
 /*#define NO_SIMPLE_TEST*/
 /*#define NO_STRING_STRING_TEST*/
+/*#define NO_CPP_TEST*/
 
 #ifndef NO_SIMPLE_TEST
 /* 'typedef is mandatory: we need global visibility */
@@ -357,6 +362,129 @@ static void StringStringTest(void)  {
 }
 #endif /* NO_STRING_STRING_TEST */
 
+#ifndef NO_CPP_TEST
+#ifdef __cplusplus
+
+typedef char char16[16];
+#ifndef C_HASHTABLE_int_char16_H
+#define C_HASHTABLE_int_char16_H
+#   define CH_KEY_TYPE int
+#   define CH_VALUE_TYPE char16
+#   define CH_NUM_BUCKETS_int_char16 256 /* in (0,65536] */
+#   define CH_NUM_BUCKETS CH_NUM_BUCKETS_int_char16 /* CH_NUM_BUCKETS defaults to 256 but it GETS UNDEFINED (==0) after each <c_hashtable.h> inclusion. That's why we copy it in a type-safe definition */
+#   include "c_hashtable.h"	/* this header has no header guards inside! */
+#endif /* C_HASHTABLE_int_char16_H */
+int int_cmp(const int* a,const int* b) {return (*a)<(*b)?-1:((*a)>(*b)?1:0);}
+ch_hash_uint int_hash(const int* k) {
+    return (ch_hash_uint) ((*k)
+#   if CH_NUM_BUCKETS_int_char16!=CH_MAX_NUM_BUCKETS /* otherwise mod is unnecessary */
+        %CH_NUM_BUCKETS_int_char16
+#   endif
+    );
+}
+
+#   include <vector>   /* std::vector */
+
+void CppTest(void)    {
+    /* This makes only sense when porting existing C++ code to plain C. Some tips:
+       -> try to replace a single 'std::unordered_map' with a 'ch_xxx_xxx', keep the code compilable (in C++) and repeat the process
+       -> it's easier to include a 'ch_xxx_xxx' into a STL container than vice-versa
+       -> so it's better to avoid placing STL containers, directly or indirectly, as keys or as values, into 'ch_xxx_xxx'
+       -> 'ch_xxx_xxx_create(...)' is still mandatory in C++, (to specify key_hash and key_cmp)
+       -> in buckets (of type 'chv_xxx_xxx') we can use 'operator[](i).k' and 'operator[](i).v' as a quick replacement of STL operator[] (but it does not work in plain C, so we'll need to convert it later)
+       -> ch_xxx_xxx::~ch_xxx_xxx() calls 'ch_xxx_xxx_free(...)' for us (but in plain C it's not available. It can be useful to remember that it's harmless to call 'ch_xxx_xxx_free(...)' multiple times)
+       -> some programmers prefer using the 'fake member function' syntax when porting code from std::unordered_map
+    */
+
+    size_t i,j,t,cnt=0;
+    const int tmpk[10]={0,1,2,3,4,5,6,7,8,9};
+    const char tmpv[16][10]={"zero","one","two","three","four","five","six","seven","eight","nine"};
+    ch_int_char16 ht0,ht1;
+    std::vector<ch_int_char16> vstd;
+
+    printf("\nCPP MODE TEST:\n");
+
+    ch_int_char16_create(&ht0,&int_hash,&int_cmp,0);   /* 'ch_int_char16_create(...)' is still mandatory */
+    ch_int_char16_create(&ht1,&int_hash,&int_cmp,0);   /* 'ch_int_char16_create(...)' is still mandatory */
+
+    for (i=1;i<6;i++) strcpy((char*)ch_int_char16_get_or_insert(&ht0,&tmpk[i],NULL),tmpv[i]); /* or ...ht0.get_or_insert(&ht0,&tmpk[i])... in the 'fake member function' syntax */
+    for (i=9;i>6;i--) strcpy((char*)ch_int_char16_get_or_insert(&ht1,&tmpk[i],NULL),tmpv[i]);
+
+    /* enumerate elements */
+    cnt=0;printf("ht0 = {%lu:\t[",ch_int_char16_get_num_items(&ht0));
+    for (j=0;j<CH_NUM_BUCKETS_int_char16;j++) {
+        const chv_int_char16& b = ht0.buckets[j];if (!b.size) continue;
+        for (i=0;i<b.size;i++)   {if (cnt>0) printf(",");printf("ht0[%d]=\"%s\"",b[i].k,b[i].v);++cnt;}  /* Warning: 'b[i].k' and 'b[i].v' are C++ specific */
+    }
+    printf("]};\n");
+    cnt=0;printf("ht1 = {%lu:\t[",ch_int_char16_get_num_items(&ht1));
+    for (j=0;j<CH_NUM_BUCKETS_int_char16;j++) {
+        const chv_int_char16& b = ht1.buckets[j];if (!b.size) continue;
+        for (i=0;i<b.size;i++)   {if (cnt>0) printf(",");printf("ht1[%d]=\"%s\"",b[i].k,b[i].v);++cnt;}
+    }
+    printf("]};\n");
+
+    printf("ch_int_char16_swap(&ht1,&ht0):\n");
+    ch_int_char16_swap(&ht1,&ht0);
+
+    /* enumerate elements */
+    cnt=0;printf("ht0 = {%lu:\t[",ch_int_char16_get_num_items(&ht0));
+    for (j=0;j<CH_NUM_BUCKETS_int_char16;j++) {
+        const chv_int_char16& b = ht0.buckets[j];if (!b.size) continue;
+        for (i=0;i<b.size;i++)   {if (cnt>0) printf(",");printf("ht0[%d]=\"%s\"",b[i].k,b[i].v);++cnt;}
+    }
+    printf("]};\n");
+    cnt=0;printf("ht1 = {%lu:\t[",ch_int_char16_get_num_items(&ht1));
+    for (j=0;j<CH_NUM_BUCKETS_int_char16;j++) {
+        const chv_int_char16& b = ht1.buckets[j];if (!b.size) continue;
+        for (i=0;i<b.size;i++)   {if (cnt>0) printf(",");printf("ht1[%d]=\"%s\"",b[i].k,b[i].v);++cnt;}
+    }
+    printf("]};\n");
+
+
+    printf("std::vector<ch_int_char16> test:\n");
+    vstd.push_back(ht0);
+    vstd.push_back(ht1);
+    vstd.push_back(ht0);
+    vstd.push_back(ht1);
+
+    /* enumerate elements */
+    for (t=0;t<vstd.size();t++) {
+        const ch_int_char16& ht = vstd[t];
+        cnt=0;printf("vstd[%lu] = {%lu:\t[",t,ch_int_char16_get_num_items(&ht));
+        for (j=0;j<CH_NUM_BUCKETS_int_char16;j++) {
+            const chv_int_char16& b = ht.buckets[j];if (!b.size) continue;
+            for (i=0;i<b.size;i++)   {if (cnt>0) printf(",");printf("ht[%d]=\"%s\"",b[i].k,b[i].v);++cnt;}
+        }
+        printf("]};\n");
+    }
+
+
+    printf("ch_int_char16_cpy(&ht1,&ht0):\n");
+    ch_int_char16_cpy(&ht1,&ht0);
+
+    /* enumerate elements */
+    cnt=0;printf("ht0 = {%lu:\t[",ch_int_char16_get_num_items(&ht0));
+    for (j=0;j<CH_NUM_BUCKETS_int_char16;j++) {
+        const chv_int_char16& b = ht0.buckets[j];if (!b.size) continue;
+        for (i=0;i<b.size;i++)   {if (cnt>0) printf(",");printf("ht0[%d]=\"%s\"",b[i].k,b[i].v);++cnt;}
+    }
+    printf("]};\n");
+    cnt=0;printf("ht1 = {%lu:\t[",ch_int_char16_get_num_items(&ht1));
+    for (j=0;j<CH_NUM_BUCKETS_int_char16;j++) {
+        const chv_int_char16& b = ht1.buckets[j];if (!b.size) continue;
+        for (i=0;i<b.size;i++)   {if (cnt>0) printf(",");printf("ht1[%d]=\"%s\"",b[i].k,b[i].v);++cnt;}
+    }
+    printf("]};\n");
+
+    /* ch_int_char16::~ch_int_char16() calls 'ch_int_char16_free(...)' for us (but in plain C it's not available) */
+
+}
+#endif /* __cpusplus */
+#endif /* NO_CPP_TEST */
+
+
+
 int main(int argc,char* argv[])
 {
 #   ifndef NO_SIMPLE_TEST
@@ -365,6 +493,12 @@ int main(int argc,char* argv[])
 #   ifndef NO_STRING_STRING_TEST
     StringStringTest();
 #   endif
+
+#   ifndef NO_CPP_TEST
+#   ifdef __cplusplus
+    CppTest();
+#   endif /* __cpusplus */
+#   endif /* NO_CPP_TEST */
 
     return 1;
 }

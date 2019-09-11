@@ -39,7 +39,7 @@ freely, subject to the following restrictions:
    CV_DISABLE_FAKE_MEMBER_FUNCTIONS     // faster with this defined
    CV_DISABLE_CLEARING_ITEM_MEMORY      // faster with this defined
    CV_ENABLE_DECLARATION_AND_DEFINITION // slower with this defined (but saves memory)
-   CV_NO_PLACEMENT_NEW                  // (c++ mode only) it does not define (unused) helper stuff like: CV_PLACEMENT_NEW, cpp_ctr,cpp_dtr,cpp_cpy
+   CV_NO_PLACEMENT_NEW                  // (c++ mode only) it does not define (unused) helper stuff like: CV_PLACEMENT_NEW, cpp_ctr,cpp_dtr,cpp_cpy,cpp_cmp
    CV_MALLOC
    CV_REALLOC
    CV_FREE
@@ -58,13 +58,16 @@ freely, subject to the following restrictions:
 #endif
 
 #ifndef C_VECTOR_VERSION
-#define C_VECTOR_VERSION        "1.11"
-#define C_VECTOR_VERSION_NUM    0111
+#define C_VECTOR_VERSION        "1.12"
+#define C_VECTOR_VERSION_NUM    0112
 #endif
 
 
 
 /* HISTORY:
+   C_VECTOR_VERSION_NUM 112
+   -> added optional stuff for c++ compilation: cpp_cmp (never used nor tested)
+
    C_VECTOR_VERSION_NUM 111
    -> added optional stuff for c++ compilation: CV_PLACEMENT_NEW,cpp_ctr,cpp_dtr,cpp_cpy
 
@@ -241,11 +244,12 @@ freely, subject to the following restrictions:
 #           define CV_PLACEMENT_NEW(_PTR)  new(CVectorPlacementNewDummy() ,_PTR)
 #       endif /* _MSC_VER */
 #   endif /* CV_PLACEMENT_NEW */
-#   if (defined(CV_PLACEMENT_NEW) && !defined(CV_CPP_GUARD))
-#   define CV_CPP_GUARD
+#   if (defined(CV_PLACEMENT_NEW) && !defined(CVH_CPP_GUARD))
+#   define CVH_CPP_GUARD
     template <typename T> inline void cpp_ctr(T* v) {CV_PLACEMENT_NEW(v) T();}
     template <typename T> inline void cpp_dtr(T* v) {v->T::~T();}
     template <typename T> inline void cpp_cpy(T* a,const T* b) {*a=*b;}
+    template <typename T> inline int cpp_cmp(const T* a,const T* b) {return (*a)<(*b)?-1:((*a)>(*b)?1:0);}
 #   endif
 #endif
 

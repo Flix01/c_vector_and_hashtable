@@ -11,11 +11,15 @@ cl /O2 /MT /Tc c_hashtable_type_unsafe_main.c /I"../include" /link /out:c_hashta
 */
 
 /*
-// compile as C++ [not really necessary (we could just scope code with 'extern "C"', like in <c_vector.h>)]
+// compile as C++ [not really necessary]
 // gcc
 gcc -O2 -x c++ -no-pie -fno-pie -I"../include" c_hashtable_type_unsafe_main.c -o c_hashtable_type_unsafe_main
 // or just
 g++ -O2 -no-pie -fno-pie -I"../include" c_hashtable_type_unsafe_main.c -o c_hashtable_type_unsafe_main
+// clang and mingw are gcc based (try using clang++ and x86_64-w64-mingw32-g++)
+
+// cl.exe (from Visual C++ 7.1 2003)
+cl /O2 /MT /Tp c_hashtable_type_unsafe_main.c /I"../include" /EHsc /link /out:c_hashtable_type_unsafe_main_vc.exe user32.lib kernel32.lib
 */
 
 /* Program Output:
@@ -64,6 +68,7 @@ Fetched item ht["name"]=["John"].
 
 /*#define NO_SIMPLE_TEST*/
 /*#define NO_STRING_STRING_TEST*/
+/*#define NO_CPP_TEST*/
 
 #ifndef NO_SIMPLE_TEST
 /* 'typedef is mandatory: we need global visibility */
@@ -338,6 +343,129 @@ static void StringStringTest(void)  {
 }
 #endif /* NO_STRING_STRING_TEST */
 
+
+#ifndef NO_CPP_TEST
+#ifdef __cplusplus
+
+
+/* stuff needed to create a chashtable with <int,char[16]> */
+typedef int ht_key;
+typedef char ht_value[16];
+int ht_key_cmp(const void* av,const void* bv) {
+    const ht_key* a = (const ht_key*) av;
+    const ht_key* b = (const ht_key*) bv;
+    return (*a)<(*b)?-1:((*a)>(*b)?1:0);
+}
+ch_hash_uint ht_key_hash(const void* kv) {
+    const ht_key* k = (const ht_key*) kv;
+    return (ch_hash_uint) ((*k)
+#   if CH_NUM_USED_BUCKETS!=CH_MAX_POSSIBLE_NUM_BUCKETS /* otherwise mod is unnecessary */
+        %CH_NUM_USED_BUCKETS /*  CH_MAX_POSSIBLE_NUM_BUCKETS is READ-ONLY and can be 256 or 65536, or 2147483648 (it depends on CH_NUM_USED_BUCKETS, and the type 'ch_hash_uint' depends on it) */
+#   endif
+    );
+}
+
+#   include <vector>   /* std::vector */
+
+void CppTest(void)    {
+    /* This makes only sense when porting existing C++ code to plain C. Some tips:
+       -> try to replace a single 'std::unordered_map' with a 'chashtable', keep the code compilable (in C++) and repeat the process
+       -> it's easier to include chashtables into STL containers than vice-versa
+       -> so it's better to avoid placing STL containers, directly or indirectly, as keys or as values, into chashtables
+       -> 'chashtable_create(...)' is still mandatory
+       -> in buckets (of type 'chvector') we can use 'bck.key_at<keytype>(i)' and 'bck.value_at<valuetype>(i)' as a quick replacement of STL operator[] (but it does not work in plain C, so we'll need to convert it later)
+       -> chashtable::~chashtable() calls 'chashtable_free(...)' for us (but in plain C it's not available. It can be useful to remember that it's harmless to call 'chashtable_free(...)' multiple times)
+       -> some programmers prefer using the 'fake member function' syntax when porting code from std::unordered_map
+    */
+
+    size_t i,j,t,cnt=0;
+    const int tmpk[10]={0,1,2,3,4,5,6,7,8,9};
+    const char tmpv[16][10]={"zero","one","two","three","four","five","six","seven","eight","nine"};
+    chashtable ht0,ht1;
+    std::vector<chashtable> vstd;
+
+    printf("\nCPP MODE TEST:\n");
+
+    chashtable_create(&ht0,sizeof(ht_key),sizeof(ht_value),&ht_key_hash,&ht_key_cmp,0);   /* 'chashtable_create(...)' is still mandatory */
+    chashtable_create(&ht1,sizeof(ht_key),sizeof(ht_value),&ht_key_hash,&ht_key_cmp,0);   /* 'chashtable_create(...)' is still mandatory */
+
+    for (i=1;i<6;i++) strcpy((char*)chashtable_get_or_insert(&ht0,&tmpk[i],NULL),tmpv[i]); /* or ...ht0.get_or_insert(&ht0,&tmpk[i])... in the 'fake member function' syntax */
+    for (i=9;i>6;i--) strcpy((char*)chashtable_get_or_insert(&ht1,&tmpk[i],NULL),tmpv[i]);
+
+    /* enumerate elements */
+    cnt=0;printf("ht0 = {%lu:\t[",chashtable_get_num_items(&ht0));
+    for (j=0;j<CH_NUM_USED_BUCKETS;j++) {
+        const chvector& b = ht0.buckets[j];if (!b.size) continue;
+        for (i=0;i<b.size;i++)   {if (cnt>0) printf(",");printf("ht0[%d]=\"%s\"",b.key_at<ht_key>(i),b.value_at<ht_value>(i));++cnt;}  /* Warning: '.key_at<type>(i)' and '.value_at<type>(i)' are C++ specific */
+    }
+    printf("]};\n");
+    cnt=0;printf("ht1 = {%lu:\t[",chashtable_get_num_items(&ht1));
+    for (j=0;j<CH_NUM_USED_BUCKETS;j++) {
+        const chvector& b = ht1.buckets[j];if (!b.size) continue;
+        for (i=0;i<b.size;i++)   {if (cnt>0) printf(",");printf("ht1[%d]=\"%s\"",b.key_at<ht_key>(i),b.value_at<ht_value>(i));++cnt;}
+    }
+    printf("]};\n");
+
+    printf("chashtable_swap(&ht1,&ht0):\n");
+    chashtable_swap(&ht1,&ht0);
+
+    /* enumerate elements */
+    cnt=0;printf("ht0 = {%lu:\t[",chashtable_get_num_items(&ht0));
+    for (j=0;j<CH_NUM_USED_BUCKETS;j++) {
+        const chvector& b = ht0.buckets[j];if (!b.size) continue;
+        for (i=0;i<b.size;i++)   {if (cnt>0) printf(",");printf("ht0[%d]=\"%s\"",b.key_at<ht_key>(i),b.value_at<ht_value>(i));++cnt;}
+    }
+    printf("]};\n");
+    cnt=0;printf("ht1 = {%lu:\t[",chashtable_get_num_items(&ht1));
+    for (j=0;j<CH_NUM_USED_BUCKETS;j++) {
+        const chvector& b = ht1.buckets[j];if (!b.size) continue;
+        for (i=0;i<b.size;i++)   {if (cnt>0) printf(",");printf("ht1[%d]=\"%s\"",b.key_at<ht_key>(i),b.value_at<ht_value>(i));++cnt;}
+    }
+    printf("]};\n");
+
+
+    printf("std::vector<chashtable> test:\n");
+    vstd.push_back(ht0);
+    vstd.push_back(ht1);
+    vstd.push_back(ht0);
+    vstd.push_back(ht1);
+
+    /* enumerate elements */
+    for (t=0;t<vstd.size();t++) {
+        const chashtable& ht = vstd[t];
+        cnt=0;printf("vstd[%lu] = {%lu:\t[",t,chashtable_get_num_items(&ht));
+        for (j=0;j<CH_NUM_USED_BUCKETS;j++) {
+            const chvector& b = ht.buckets[j];if (!b.size) continue;
+            for (i=0;i<b.size;i++)   {if (cnt>0) printf(",");printf("ht[%d]=\"%s\"",b.key_at<ht_key>(i),b.value_at<ht_value>(i));++cnt;}  /* Warning: '.key_at<type>(i)' and '.value_at<type>(i)' are C++ specific */
+        }
+        printf("]};\n");
+    }
+
+
+    printf("chashtable_cpy(&ht1,&ht0):\n");
+    chashtable_cpy(&ht1,&ht0);
+
+    /* enumerate elements */
+    cnt=0;printf("ht0 = {%lu:\t[",chashtable_get_num_items(&ht0));
+    for (j=0;j<CH_NUM_USED_BUCKETS;j++) {
+        const chvector& b = ht0.buckets[j];if (!b.size) continue;
+        for (i=0;i<b.size;i++)   {if (cnt>0) printf(",");printf("ht0[%d]=\"%s\"",b.key_at<ht_key>(i),b.value_at<ht_value>(i));++cnt;}
+    }
+    printf("]};\n");
+    cnt=0;printf("ht1 = {%lu:\t[",chashtable_get_num_items(&ht1));
+    for (j=0;j<CH_NUM_USED_BUCKETS;j++) {
+        const chvector& b = ht1.buckets[j];if (!b.size) continue;
+        for (i=0;i<b.size;i++)   {if (cnt>0) printf(",");printf("ht1[%d]=\"%s\"",b.key_at<ht_key>(i),b.value_at<ht_value>(i));++cnt;}
+    }
+    printf("]};\n");
+
+    /* chashtable::~chashtable() calls 'chashtable_free(...)' for us (but in plain C it's not available) */
+
+}
+#endif /* __cpusplus */
+#endif /* NO_CPP_TEST */
+
+
 int main(int argc,char* argv[])
 {
 #   ifndef NO_SIMPLE_TEST
@@ -346,6 +474,12 @@ int main(int argc,char* argv[])
 #   ifndef NO_STRING_STRING_TEST
     StringStringTest();
 #   endif
+
+#   ifndef NO_CPP_TEST
+#   ifdef __cplusplus
+    CppTest();
+#   endif /* __cpusplus */
+#   endif /* NO_CPP_TEST */
 
     return 1;
 }
