@@ -29,7 +29,7 @@ freely, subject to the following restrictions:
    globally (= in the Project Options or in a StdAfx.h file):
 
    CH_NUM_USED_BUCKETS                  // (defaults to 256)
-   CH_MAX_POSSIBLE_NUM_BUCKETS          // [READ-ONLY definition] It can be 256, 65536 or 2147483648 and defines 'ch_hash_uint' as 'unsigned char', 'unsigned short' or 'unsigned int'
+   CH_MAX_POSSIBLE_NUM_BUCKETS          // [READ-ONLY definition] It can be 256, 65536 or 2147483648 and defines 'chtu_hash_uint' as 'unsigned char', 'unsigned short' or 'unsigned int'
                                         // (while it could seem redundant, it is handy to use it inside hash functions to see if we need a mod (%CH_NUM_USED_BUCKETS) or not)
    CH_DISABLE_FAKE_MEMBER_FUNCTIONS     // faster with this defined
    CH_DISABLE_CLEARING_ITEM_MEMORY      // faster with this defined
@@ -54,10 +54,15 @@ freely, subject to the following restrictions:
 #ifndef C_HASHTABLE_TYPE_UNSAFE_H
 #define C_HASHTABLE_TYPE_UNSAFE_H
 
-#define C_HASHTABLE_TYPE_UNSAFE_VERSION         "1.02"
-#define C_HASHTABLE_TYPE_UNSAFE_VERSION_NUM     0102
+#define C_HASHTABLE_TYPE_UNSAFE_VERSION         "1.03"
+#define C_HASHTABLE_TYPE_UNSAFE_VERSION_NUM     0103
 
 /* HISTORY:
+   C_HASHTABLE_TYPE_UNSAFE_VERSION_NUM  103
+   -> renamed 'ch_hash_uint' to 'chtu_hash_uint' (where 'tu' stands for 'type unsafe'). This is necessary
+      to avoid a possible conflicting declaration of 'ch_hash_uint' in same configurations where
+      chashtable.h and chashtable_type_unsafe.h are used together
+
    C_HASHTABLE_TYPE_UNSAFE_VERSION_NUM  102
    -> added c++ copy ctr, copy assignment and dtr (and move ctr plus move assignment if CH_HAS_MOVE_SEMANTICS is defined),
       to ease porting code from c++ to c a bit more (but 'chashtable_create(...)' is still necessary in c++ mode)
@@ -276,17 +281,17 @@ CH_API unsigned ch_hash_murmur3(const unsigned char* key, size_t len, unsigned s
 #   define CH_NUM_USED_BUCKETS 2147483648
 #endif
 
-/* Here we set CH_MAX_POSSIBLE_NUM_BUCKETS. It can be only be 256, 65536 or 2147483648 and determinates 'ch_hash_uint' */
+/* Here we set CH_MAX_POSSIBLE_NUM_BUCKETS. It can be only be 256, 65536 or 2147483648 and determinates 'chtu_hash_uint' */
 #undef CH_MAX_POSSIBLE_NUM_BUCKETS
 #if CH_NUM_USED_BUCKETS<=256
 #   define CH_MAX_POSSIBLE_NUM_BUCKETS 256
-    typedef unsigned char ch_hash_uint;
+    typedef unsigned char chtu_hash_uint;
 #elif CH_NUM_USED_BUCKETS<=65536
 #   define CH_MAX_POSSIBLE_NUM_BUCKETS 65536
-    typedef unsigned short ch_hash_uint;
+    typedef unsigned short chtu_hash_uint;
 #elif CH_NUM_USED_BUCKETS<=2147483648
 #   define CH_MAX_POSSIBLE_NUM_BUCKETS 2147483648
-    typedef unsigned int ch_hash_uint;
+    typedef unsigned int chtu_hash_uint;
 #   else
 #   error CH_NUM_USED_BUCKETS cannot be bigger than 2147483648.
 #   endif
@@ -302,7 +307,7 @@ struct chashtable {
     void (*const key_dtr)(void*);                     /* optional (can be NULL) */
     void (*const key_cpy)(void*,const void*);		/* optional (can be NULL) */
     int (*const key_cmp)(const void*,const void*);/* optional (can be NULL) (for sorted vectors only) */
-    ch_hash_uint (*const key_hash)(const void*);
+    chtu_hash_uint (*const key_hash)(const void*);
     /* value callbacks */
     void (*const value_ctr)(void*);                     /* optional (can be NULL) */
     void (*const value_dtr)(void*);                     /* optional (can be NULL) */
@@ -374,12 +379,12 @@ CH_API_DEC void chashtable_shrink_to_fit(chashtable* ht);
 CH_API_DEC void chashtable_create_with(
         chashtable* ht,
 		size_t key_size_in_bytes,size_t value_size_in_bytes,
-        ch_hash_uint (*key_hash)(const void*),
+        chtu_hash_uint (*key_hash)(const void*),
         int (*key_cmp) (const void*,const void*),
         void (*key_ctr)(void*),void (*key_dtr)(void*),void (*key_cpy)(void*,const void*),
         void (*value_ctr)(void*),void (*value_dtr)(void*),void (*value_cpy)(void*,const void*),
         size_t initial_bucket_capacity);
-CH_API_DEC void chashtable_create)(chashtable* ht,size_t key_size_in_bytes,size_t value_size_in_bytes,ch_hash_uint (*key_hash)(const void*),int (*key_cmp) (const void*,const void*),size_t initial_bucket_capacity);
+CH_API_DEC void chashtable_create)(chashtable* ht,size_t key_size_in_bytes,size_t value_size_in_bytes,chtu_hash_uint (*key_hash)(const void*),int (*key_cmp) (const void*,const void*),size_t initial_bucket_capacity);
 #endif /* CH_ENABLE_DECLARATION_AND_DEFINITION */
 
 #endif /* C_HASHTABLE_TYPE_UNSAFE_H */
@@ -566,7 +571,7 @@ CH_API_DEF void chashtable_clear(chashtable* ht)    {
 */
 CH_API_DEF void* chashtable_get_or_insert(chashtable* ht,const void* key,int* match) {
     chvector* v = NULL;
-    size_t position;ch_hash_uint hash;int match2;
+    size_t position;chtu_hash_uint hash;int match2;
     CH_ASSERT(ht && ht->key_hash);
     hash = ht->key_hash(key);
 #   if CH_NUM_USED_BUCKETS!=CH_MAX_POSSIBLE_NUM_BUCKETS
@@ -601,7 +606,7 @@ CH_API_DEF void* chashtable_get_or_insert(chashtable* ht,const void* key,int* ma
 }
 CH_API_DEF void* chashtable_get(chashtable* ht,const void* key) {
     chvector* v = NULL;
-    size_t position;ch_hash_uint hash;int match=0;
+    size_t position;chtu_hash_uint hash;int match=0;
     CH_ASSERT(ht && ht->key_hash);
     hash = ht->key_hash(key);
 #   if CH_NUM_USED_BUCKETS!=CH_MAX_POSSIBLE_NUM_BUCKETS
@@ -628,7 +633,7 @@ CH_API_DEF const void* chashtable_get_const(const chashtable* ht,const void* key
 
 CH_API_DEF int chashtable_remove(chashtable* ht,const void* key) {
     chvector* v = NULL;
-    size_t position;ch_hash_uint hash;int match = 0;
+    size_t position;chtu_hash_uint hash;int match = 0;
     CH_ASSERT(ht && ht->key_hash);
     hash = ht->key_hash(key);
 #   if CH_NUM_USED_BUCKETS!=CH_MAX_POSSIBLE_NUM_BUCKETS
@@ -748,7 +753,7 @@ CH_API_DEF void chashtable_swap(chashtable* a,chashtable* b)  {
 }
 CH_API_DEF void chashtable_cpy(chashtable* a,const chashtable* b) {
     size_t i;
-    typedef ch_hash_uint (*key_hash_type)(const void*);
+    typedef chtu_hash_uint (*key_hash_type)(const void*);
     typedef int (*key_cmp_type)(const void*,const void*);
     typedef void (*key_ctr_dtr_type)(void*);
     typedef void (*key_cpy_type)(void*,const void*);
@@ -808,12 +813,12 @@ CH_API_DEF void chashtable_shrink_to_fit(chashtable* ht)   {
 CH_API_DEF void chashtable_create_with(
         chashtable* ht,
 		size_t key_size_in_bytes,size_t value_size_in_bytes,
-        ch_hash_uint (*key_hash)(const void*),
+        chtu_hash_uint (*key_hash)(const void*),
         int (*key_cmp) (const void*,const void*),
         void (*key_ctr)(void*),void (*key_dtr)(void*),void (*key_cpy)(void*,const void*),
         void (*value_ctr)(void*),void (*value_dtr)(void*),void (*value_cpy)(void*,const void*),
         size_t initial_bucket_capacity)   {
-    typedef ch_hash_uint (*key_hash_type)(const void*);
+    typedef chtu_hash_uint (*key_hash_type)(const void*);
     typedef int (*key_cmp_type)(const void*,const void*);
     typedef void (*key_ctr_dtr_type)(void*);
     typedef void (*key_cpy_type)(void*,const void*);
@@ -859,7 +864,7 @@ CH_API_DEF void chashtable_create_with(
     *((cpy_mf*)&ht->cpy) = &chashtable_cpy;
 #   endif
 }
-CH_API_DEF void chashtable_create(chashtable* ht,size_t key_size_in_bytes,size_t value_size_in_bytes,ch_hash_uint (*key_hash)(const void*),int (*key_cmp) (const void*,const void*),size_t initial_bucket_capacity)    {
+CH_API_DEF void chashtable_create(chashtable* ht,size_t key_size_in_bytes,size_t value_size_in_bytes,chtu_hash_uint (*key_hash)(const void*),int (*key_cmp) (const void*,const void*),size_t initial_bucket_capacity)    {
     chashtable_create_with(ht,key_size_in_bytes,value_size_in_bytes,key_hash,key_cmp,NULL,NULL,NULL,NULL,NULL,NULL,initial_bucket_capacity);
 }
 

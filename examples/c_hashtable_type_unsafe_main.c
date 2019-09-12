@@ -90,11 +90,11 @@ static int mykey_cmp(const void* av,const void* bv) {
     else if (a->c<b->c) return -1;
     return 0;
 }
-static __inline ch_hash_uint mykey_hash(const void* kv) {
+static __inline chtu_hash_uint mykey_hash(const void* kv) {
 	const mykey* k = (const mykey*) kv;
-    return (ch_hash_uint)((k->a)
+    return (chtu_hash_uint)((k->a)
 #   if CH_NUM_USED_BUCKETS!=CH_MAX_POSSIBLE_NUM_BUCKETS /* otherwise mod is unnecessary */
-        %CH_NUM_USED_BUCKETS /* CH_MAX_POSSIBLE_NUM_BUCKETS is READ-ONLY and can be 256 or 65536, or 2147483648 (it depends on CH_NUM_USED_BUCKETS, and the type 'ch_hash_uint' depends on it) */
+        %CH_NUM_USED_BUCKETS /* CH_MAX_POSSIBLE_NUM_BUCKETS is READ-ONLY and can be 256 or 65536, or 2147483648 (it depends on CH_NUM_USED_BUCKETS, and the type 'chtu_hash_uint' depends on it) */
 #   endif
     );
 }
@@ -249,10 +249,10 @@ static __inline void string_setter(string* a,const char* b)    {
     }
 }
 static void string_cpy(void* av,const void* bv)    {string* a=(string*)av;const string* b=(const string*)bv;string_setter(a,*b);}
-static __inline ch_hash_uint string_hash(const void* kv) {
+static __inline chtu_hash_uint string_hash(const void* kv) {
 /*#   define TEST_MURMUR_3_HASH */  /* ...we should test this with a lot of strings... */
 	const string* k=(const string*)kv;
-    return (ch_hash_uint) (((*k) ?
+    return (chtu_hash_uint) (((*k) ?
 #   ifdef TEST_MURMUR_3_HASH
                  /* well, ch_hash_murmur3(...) returns a 32-bit unsigned int. Hope it works... */
                  ch_hash_murmur3((const unsigned char*) (*k),strlen(*k),7)  /* ...but its calculation is much slower */
@@ -261,7 +261,7 @@ static __inline ch_hash_uint string_hash(const void* kv) {
 #   endif
                : 0)
 #   if CH_NUM_USED_BUCKETS!=CH_MAX_POSSIBLE_NUM_BUCKETS /* otherwise mod is unnecessary */
-    %CH_NUM_USED_BUCKETS /*  CH_MAX_POSSIBLE_NUM_BUCKETS is READ-ONLY and can be 256 or 65536, or 2147483648 (it depends on CH_NUM_USED_BUCKETS, and the type 'ch_hash_uint' depends on it) */
+    %CH_NUM_USED_BUCKETS /*  CH_MAX_POSSIBLE_NUM_BUCKETS is READ-ONLY and can be 256 or 65536, or 2147483648 (it depends on CH_NUM_USED_BUCKETS, and the type 'chtu_hash_uint' depends on it) */
 #   endif
     );
 }
@@ -356,11 +356,11 @@ int ht_key_cmp(const void* av,const void* bv) {
     const ht_key* b = (const ht_key*) bv;
     return (*a)<(*b)?-1:((*a)>(*b)?1:0);
 }
-ch_hash_uint ht_key_hash(const void* kv) {
+chtu_hash_uint ht_key_hash(const void* kv) {
     const ht_key* k = (const ht_key*) kv;
-    return (ch_hash_uint) ((*k)
+    return (chtu_hash_uint) ((*k)
 #   if CH_NUM_USED_BUCKETS!=CH_MAX_POSSIBLE_NUM_BUCKETS /* otherwise mod is unnecessary */
-        %CH_NUM_USED_BUCKETS /*  CH_MAX_POSSIBLE_NUM_BUCKETS is READ-ONLY and can be 256 or 65536, or 2147483648 (it depends on CH_NUM_USED_BUCKETS, and the type 'ch_hash_uint' depends on it) */
+        %CH_NUM_USED_BUCKETS /*  CH_MAX_POSSIBLE_NUM_BUCKETS is READ-ONLY and can be 256 or 65536, or 2147483648 (it depends on CH_NUM_USED_BUCKETS, and the type 'chtu_hash_uint' depends on it) */
 #   endif
     );
 }
