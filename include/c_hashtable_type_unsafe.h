@@ -54,10 +54,13 @@ freely, subject to the following restrictions:
 #ifndef C_HASHTABLE_TYPE_UNSAFE_H
 #define C_HASHTABLE_TYPE_UNSAFE_H
 
-#define C_HASHTABLE_TYPE_UNSAFE_VERSION         "1.03"
-#define C_HASHTABLE_TYPE_UNSAFE_VERSION_NUM     0103
+#define C_HASHTABLE_TYPE_UNSAFE_VERSION         "1.04"
+#define C_HASHTABLE_TYPE_UNSAFE_VERSION_NUM     0104
 
 /* HISTORY:
+   C_HASHTABLE_TYPE_UNSAFE_VERSION_NUM 104
+   -> Fixed wrong detection of sorting errors in 'chashtable_dbg_check(...)'
+
    C_HASHTABLE_TYPE_UNSAFE_VERSION_NUM  103
    -> renamed 'ch_hash_uint' to 'chtu_hash_uint' (where 'tu' stands for 'type unsafe'). This is necessary
       to avoid a possible conflicting declaration of 'ch_hash_uint' in same configurations where
@@ -684,7 +687,7 @@ CH_API_DEF int chashtable_dbg_check(const chashtable* ht) {
                 for (j=0;j<bck->size;j++)  {
                     const unsigned char* key = (const unsigned char*) bck->k+j*ht->key_size_in_bytes;
                     if (last_key) {
-                        if (ht->key_cmp(last_key,key)<=0) {
+                        if (ht->key_cmp(last_key,key)>0) {
                             /* When this happens, it can be a wrong user 'key_cmp' function (that cannot sort keys in a consistent way) */
                             ++num_sorting_errors;
 #                       ifndef CH_NO_STDIO

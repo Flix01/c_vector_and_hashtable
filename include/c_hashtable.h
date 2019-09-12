@@ -66,12 +66,15 @@ freely, subject to the following restrictions:
 #endif
 
 #ifndef C_HASHTABLE_VERSION
-#define C_HASHTABLE_VERSION         "1.08"
-#define C_HASHTABLE_VERSION_NUM     0108
+#define C_HASHTABLE_VERSION         "1.09"
+#define C_HASHTABLE_VERSION_NUM     0109
 #endif
 
 
 /* HISTORY:
+   C_HASHTABLE_VERSION_NUM 0108:
+   -> Fixed wrong detection of sorting errors in 'ch_xxx_xxx_dbg_check(...)'
+
    C_HASHTABLE_VERSION_NUM 0108:
    -> added c++ copy ctr, copy assignment and dtr (and move ctr plus move assignment if CH_HAS_MOVE_SEMANTICS is defined),
       to ease porting code from c++ to c a bit more (but 'ch_xxx_xxx_create(...)' is still necessary in c++ mode)
@@ -791,7 +794,7 @@ CH_API_DEF int CH_HASHTABLE_TYPE_FCT(_dbg_check)(const CH_HASHTABLE_TYPE* ht) {
                 for (j=0;j<bck->size;j++)  {
                     const CH_HASHTABLE_ITEM_TYPE* item = &bck->v[j];
                     if (last_item) {
-                        if (ht->key_cmp(&last_item->k,&item->k)<=0) {
+                        if (ht->key_cmp(&last_item->k,&item->k)>0) {
                             /* When this happens, it can be a wrong user 'key_cmp' function (that cannot sort keys in a consistent way) */
                             ++num_sorting_errors;
 #                       ifndef CH_NO_STDIO
