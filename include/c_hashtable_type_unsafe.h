@@ -28,7 +28,8 @@ freely, subject to the following restrictions:
    GLOBAL DEFINITIONS: The following definitions (when used) must be set
    globally (= in the Project Options or in a StdAfx.h file):
 
-   CH_NUM_USED_BUCKETS                  // (defaults to 256)
+   CH_NUM_USED_BUCKETS                  // in [1,2147483648] (defaults to 256). USING POWERS OF TWO ALLOW AVOIDING MODULO IN YOUR HASH FUNCTION (i.e. hash % CH_NUM_USED_BUCKETS) BY USING										
+										//		'xor-folding' or 'fibonacci-folding' (please search this file for: 'xor-folding' or 'fibonacci-folding' for further info)
    CH_MAX_POSSIBLE_NUM_BUCKETS          // [READ-ONLY definition] It can be 256, 65536 or 2147483648 and defines 'chtu_hash_uint' as 'unsigned char', 'unsigned short' or 'unsigned int'
                                         // (while it could seem redundant, it is handy to use it inside hash functions to see if we need a mod (%CH_NUM_USED_BUCKETS) or not)
    CH_DISABLE_FAKE_MEMBER_FUNCTIONS     // faster with this defined
@@ -54,10 +55,14 @@ freely, subject to the following restrictions:
 #ifndef C_HASHTABLE_TYPE_UNSAFE_H
 #define C_HASHTABLE_TYPE_UNSAFE_H
 
-#define C_HASHTABLE_TYPE_UNSAFE_VERSION         "1.04"
-#define C_HASHTABLE_TYPE_UNSAFE_VERSION_NUM     0104
+#define C_HASHTABLE_TYPE_UNSAFE_VERSION         "1.05"
+#define C_HASHTABLE_TYPE_UNSAFE_VERSION_NUM     0105
 
 /* HISTORY:
+   C_HASHTABLE_TYPE_UNSAFE_VERSION_NUM 105
+   -> Renamed 'ch_hash_murmur3(...)' -> 'ch_hash32_murmur3(...)'
+   -> Added the helper functions 'ch_hash32_murmur3_str(...)', 'ch_hash32_FNV1a(...)', 'ch_hash32_FNV1a_str(...)'
+
    C_HASHTABLE_TYPE_UNSAFE_VERSION_NUM 104
    -> Fixed wrong detection of sorting errors in 'chashtable_dbg_check(...)'
 
@@ -180,6 +185,11 @@ freely, subject to the following restrictions:
 #endif
 
 
+#ifndef CH_XSTR
+#define CH_XSTR(s) CH_STR(s)
+#define CH_STR(s) #s
+#endif
+
 #ifndef CH_COMMON_FUNCTIONS_GUARD
 #define CH_COMMON_FUNCTIONS_GUARD
 /* base memory helpers */
@@ -233,16 +243,15 @@ CH_API void ch_display_bytes(size_t bytes_in)   {
 #endif /* CH_NO_STDIO */
 
 /* from https://en.wikipedia.org/wiki/MurmurHash
-   Warning: it returns unsigned int and works for little-endian CPUs only
+   Warning: it returns unsigned int (32-bit) and works for little-endian CPUs only
 */
-CH_API unsigned ch_hash_murmur3(const unsigned char* key, size_t len, unsigned seed)    {
-    unsigned h = seed;
+CH_API unsigned ch_hash32_murmur3(const unsigned char* key, size_t len, unsigned seed)    {
+    unsigned h = seed;	/* seed, an arbitrary (one per application, or one per hashtable): ex: 0xBAADF00D */
     if (len > 3) {
         size_t i = len >> 2;
         do {
-            unsigned k;
-            memcpy(&k, key, sizeof(unsigned));
-            key += sizeof(unsigned);
+            unsigned k;memcpy(&k, key, sizeof(unsigned));key += sizeof(unsigned);
+			/* each 4-byte-chunk of 'key' is processed in 'k' this way: */
             k *= 0xcc9e2d51;
             k = (k << 15) | (k >> 17);
             k *= 0x1b873593;
@@ -258,7 +267,9 @@ CH_API unsigned ch_hash_murmur3(const unsigned char* key, size_t len, unsigned s
             k <<= 8;
             k |= key[i - 1];
         } while (--i);
-        k *= 0xcc9e2d51;
+		/* Note: Endian swapping of k is necessary on big-endian machines here. */
+		/* any remaining-byte of 'key' is processed in 'k' this way: */        
+		k *= 0xcc9e2d51;
         k = (k << 15) | (k >> 17);
         k *= 0x1b873593;
         h ^= k;
@@ -271,6 +282,103 @@ CH_API unsigned ch_hash_murmur3(const unsigned char* key, size_t len, unsigned s
     h ^= h >> 16;
     return h;
 }
+CH_API unsigned ch_hash32_murmur3_str(const char* text, unsigned seed)    {
+    unsigned h = seed;	/* seed, an arbitrary (one per application, or one per hashtable): ex: 0xBAADF00D */
+	const unsigned char* str = (const unsigned char*) text;	
+	const unsigned char* key = str;
+	size_t len = 0,tot_len = 0;	/* we use'len' always in [0,4] here */
+	while (*key++) {
+		++len;
+		if (len==4)	{
+            unsigned k;memcpy(&k, str, sizeof(unsigned));str += sizeof(unsigned);
+			/* each 4-byte-chunk of 'key' is processed in 'k' this way: */
+            k *= 0xcc9e2d51;
+            k = (k << 15) | (k >> 17);
+            k *= 0x1b873593;
+            h ^= k;
+            h = (h << 13) | (h >> 19);
+            h = h * 5 + 0xe6546b64;	
+			tot_len+=len;len = 0; key = str;		
+		}	
+	}
+	tot_len+=len;
+    if (len) {
+		/* 'len' should be in [1,3] here */
+        unsigned k = 0;
+        do {
+            k <<= 8;
+            k |= str[len - 1];
+        } while (--len);
+		/* Note: Endian swapping of k is necessary on big-endian machines here (skipped). */
+		/* any remaining-byte of 'key' is processed in 'k' this way: */        
+		k *= 0xcc9e2d51;
+        k = (k << 15) | (k >> 17);
+        k *= 0x1b873593;
+        h ^= k;
+    }
+    h ^= tot_len;
+    h ^= h >> 16;
+    h *= 0x85ebca6b;
+    h ^= h >> 13;
+    h *= 0xc2b2ae35;
+    h ^= h >> 16;
+    return h;
+}
+/* based on http://www.isthe.com/chongo/tech/comp/fnv/index.html */
+CH_API unsigned ch_hash32_FNV1a(const unsigned char* key, size_t len)	{
+    const unsigned char *bp = (unsigned char *)key;	
+    const unsigned char *be = bp + len;
+    unsigned hash = 2166136261;	/* offset_basis for 32 bit hash */
+	while (bp < be) {
+		hash ^= (unsigned)*bp++;    
+#		if (defined(__GCC__) || defined(CH_FNV_GCC_OPTIMIZATION))
+		hash += (hash<<1) + (hash<<4) + (hash<<7) + (hash<<8) + (hash<<24);
+#		else
+		hash = hash * 16777619;	/* prime for 32 bit hash */
+#		endif
+	}
+    return hash;
+}
+CH_API unsigned ch_hash32_FNV1a_str(const char* text)	{
+	unsigned hash = 2166136261;	/* offset_basis for 32 bit hash */
+	const unsigned char* str = (const unsigned char*) text;	
+	while (*str)	{
+		hash ^= (unsigned) *str++;
+#		if (defined(__GCC__) || defined(CH_FNV_GCC_OPTIMIZATION))
+		hash += (hash<<1) + (hash<<4) + (hash<<7) + (hash<<8) + (hash<<24);
+#		else
+		hash = hash * 16777619;	/* prime for 32 bit hash */
+#		endif
+	}
+	return hash;
+}
+/* 	[I don't know much about hashing theory... so please don't trust the following info too much!]
+	
+	All the helper hash functions above return 32-bit unsigned integers: this type does not always match 'chtu_hash_uint',
+	that is required by our signature. To convert hash32 (the 32-bit value returned by these helper hash functions) to 'chtu_hash_uint':
+
+	->	The type match when CH_NUM_USED_BUCKETS==2147483648 and: 'chtu_hash_uint' == unsigned
+		chtu_hash_uint hash == hash32; // cast to 'chtu_hash_uint' is not necessary
+
+	-> Otherwise we can use the 32-bit hash functions and then fold values in our range.
+		To do so:
+		-> if CH_NUM_USED_BUCKETS is not a power of two we must use mod:
+			chtu_hash_uint hash = (chtu_hash_uint)(hash32%CH_NUM_USED_BUCKETS);	// a bit slow
+		-> otherwise CH_NUM_USED_BUCKETS == 2^X == pow(2,X). In this case we can use mod too, but also:
+			-> 'xor-folding' (see http://www.isthe.com/chongo/tech/comp/fnv/index.html):
+				chtu_hash_uint hashX = (chtu_hash_uint) ((hash32>>X) ^ (hash32 & (((unsigned)1<<(x))-1));
+			-> 'fibonacci-folding' (see https://programmingpraxis.com/2018/06/19/fibonacci-hash):
+				chtu_hash_uint hashX = (chtu_hash_uint) ((hash32*2654435769U) >> (32-X));
+
+	-> In the default case: CH_NUM_USED_BUCKETS == 256 (== CH_MAX_POSSIBLE_NUM_BUCKETS): we could do nothing and just cast 
+	   to 'chtu_hash_uint', but since unsigned char is not a 32-bit value, we can do better by using a folding technique 
+       and see if it works better:
+		-> chtu_hash_uint hash8 = (chtu_hash_uint) ((hash32>>8) ^ (hash32 & ((unsigned)0xFF)));		// 'xor-folding' or
+		-> chtu_hash_uint hash8 = (chtu_hash_uint) ((hash32*2654435769U) >> 24);					// 'fibonacci-folding'
+*/
+/* if CH_NUM_USED_BUCKETS == pow(2,num_buckets_pot_exponent), with num_buckets_pot_exponent<32, then we can 'convert' 32-bit hash values this way: */
+#	define CH_HASH_FROM_HASH32_USING_XORFOLDING(hash32,num_buckets_pot_exponent)	( (hash32>>num_buckets_pot_exponent) ^ ( hash32 & ((1U<<(num_buckets_pot_exponent))-1) ) )
+#	define CH_HASH_FROM_HASH32_USING_FIBFOLDING(hash32,num_buckets_pot_exponent)	((hash32*2654435769U) >> (32-num_buckets_pot_exponent))
 #endif /* CH_COMMON_FUNCTIONS_GUARD */
 
 #ifndef CH_NUM_USED_BUCKETS
