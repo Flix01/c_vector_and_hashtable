@@ -55,10 +55,13 @@ freely, subject to the following restrictions:
 #ifndef C_HASHTABLE_TYPE_UNSAFE_H
 #define C_HASHTABLE_TYPE_UNSAFE_H
 
-#define C_HASHTABLE_TYPE_UNSAFE_VERSION         "1.05"
-#define C_HASHTABLE_TYPE_UNSAFE_VERSION_NUM     0105
+#define C_HASHTABLE_TYPE_UNSAFE_VERSION         "1.06"
+#define C_HASHTABLE_TYPE_UNSAFE_VERSION_NUM     0106
 
 /* HISTORY:
+   C_HASHTABLE_TYPE_UNSAFE_VERSION_NUM 106
+   -> Added code to silence some compiler warnings (see: COMPILER_SUPPORTS_GCC_DIAGNOSTIC definition)
+	
    C_HASHTABLE_TYPE_UNSAFE_VERSION_NUM 105
    -> Renamed 'ch_hash_murmur3(...)' -> 'ch_hash32_murmur3(...)'
    -> Added the helper functions 'ch_hash32_murmur3_str(...)', 'ch_hash32_FNV1a(...)', 'ch_hash32_FNV1a_str(...)'
@@ -89,6 +92,12 @@ freely, subject to the following restrictions:
    -> made some changes to allow compilation in c++ mode
    -> added a hashtable ctr to ease compilation in c++ mode
 */
+
+#ifndef COMPILER_SUPPORTS_GCC_DIAGNOSTIC    // We define this
+#   if (defined(__GNUC__) || defined(__MINGW__) || defined(__clang__))
+#       define COMPILER_SUPPORTS_GCC_DIAGNOSTIC
+#   endif
+#endif
 
 #if __cplusplus>=201103L
 #   undef CH_HAS_MOVE_SEMANTICS
@@ -184,11 +193,6 @@ freely, subject to the following restrictions:
 #   endif
 #endif
 
-
-#ifndef CH_XSTR
-#define CH_XSTR(s) CH_STR(s)
-#define CH_STR(s) #s
-#endif
 
 #ifndef CH_COMMON_FUNCTIONS_GUARD
 #define CH_COMMON_FUNCTIONS_GUARD
@@ -377,8 +381,8 @@ CH_API unsigned ch_hash32_FNV1a_str(const char* text)	{
 		-> chtu_hash_uint hash8 = (chtu_hash_uint) ((hash32*2654435769U) >> 24);					// 'fibonacci-folding'
 */
 /* if CH_NUM_USED_BUCKETS == pow(2,num_buckets_pot_exponent), with num_buckets_pot_exponent<32, then we can 'convert' 32-bit hash values this way: */
-#	define CH_HASH_FROM_HASH32_USING_XORFOLDING(hash32,num_buckets_pot_exponent)	( (hash32>>num_buckets_pot_exponent) ^ ( hash32 & ((1U<<(num_buckets_pot_exponent))-1) ) )
-#	define CH_HASH_FROM_HASH32_USING_FIBFOLDING(hash32,num_buckets_pot_exponent)	((hash32*2654435769U) >> (32-num_buckets_pot_exponent))
+#	define CH_HASH_FROM_HASH32_USING_XORFOLDING(hash32,num_buckets_pot_exponent)	( (hash32>>(num_buckets_pot_exponent)) ^ ( hash32 & ((1U<<(num_buckets_pot_exponent))-1) ) )
+#	define CH_HASH_FROM_HASH32_USING_FIBFOLDING(hash32,num_buckets_pot_exponent)	((hash32*2654435769U) >> (32-(num_buckets_pot_exponent)))
 #endif /* CH_COMMON_FUNCTIONS_GUARD */
 
 #ifndef CH_NUM_USED_BUCKETS
@@ -506,6 +510,14 @@ CH_API_DEC void chashtable_create)(chashtable* ht,size_t key_size_in_bytes,size_
 #if (!defined(CH_ENABLE_DECLARATION_AND_DEFINITION) || defined(C_HASHTABLE_TYPE_UNSAFE_IMPLEMENTATION))
 #ifndef C_HASHTABLE_TYPE_UNSAFE_H_IMPLEMENTATION_GUARD
 #define C_HASHTABLE_TYPE_UNSAFE_H_IMPLEMENTATION_GUARD
+
+#ifdef COMPILER_SUPPORTS_GCC_DIAGNOSTIC
+#   pragma GCC diagnostic push
+#   pragma GCC diagnostic ignored "-Wpragmas"
+#   pragma GCC diagnostic ignored "-Wunknown-warning-option"
+#   pragma GCC diagnostic ignored "-Wignored-qualifiers"
+#   pragma GCC diagnostic ignored "-Wclass-memaccess"
+#endif //COMPILER_SUPPORTS_GCC_DIAGNOSTIC
 
 /* ch implementation */
 
@@ -1044,6 +1056,10 @@ CH_API_DEF void chashtable_create(chashtable* ht,size_t key_size_in_bytes,size_t
 
     chashtable::~chashtable() {chashtable_free(this);}
 #endif
+
+#ifdef COMPILER_SUPPORTS_GCC_DIAGNOSTIC
+#   pragma GCC diagnostic pop
+#endif //COMPILER_SUPPORTS_GCC_DIAGNOSTIC
 
 #endif /* C_HASHTABLE_TYPE_UNSAFE_H_IMPLEMENTATION_GUARD */
 #endif /* (!defined(CH_ENABLE_DECLARATION_AND_DEFINITION) || defined(C_HASHTABLE_TYPE_UNSAFE_IMPLEMENTATION)) */

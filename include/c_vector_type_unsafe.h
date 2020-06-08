@@ -54,11 +54,14 @@ freely, subject to the following restrictions:
 #ifndef C_VECTOR_TYPE_UNSAFE_H
 #define C_VECTOR_TYPE_UNSAFE_H
 
-#define C_VECTOR_TYPE_UNSAFE_VERSION            "1.07"
-#define C_VECTOR_TYPE_UNSAFE_VERSION_NUM        0107
+#define C_VECTOR_TYPE_UNSAFE_VERSION            "1.08"
+#define C_VECTOR_TYPE_UNSAFE_VERSION_NUM        0108
 
 /* HISTORY
-   C_VECTOR_TYPE_UNSAFE_VERSION_NUM 106
+   C_VECTOR_TYPE_UNSAFE_VERSION_NUM 108
+   -> Added code to silence some compiler warnings (see: COMPILER_SUPPORTS_GCC_DIAGNOSTIC definition)
+
+   C_VECTOR_TYPE_UNSAFE_VERSION_NUM 107
    -> added optional stuff for c++ compilation: cpp_cmp_tu (never used nor tested)
 
    C_VECTOR_TYPE_UNSAFE_VERSION_NUM 106
@@ -91,6 +94,18 @@ freely, subject to the following restrictions:
 
 */
 
+#ifndef COMPILER_SUPPORTS_GCC_DIAGNOSTIC    // We define this
+#   if (defined(__GNUC__) || defined(__MINGW__) || defined(__clang__))
+#       define COMPILER_SUPPORTS_GCC_DIAGNOSTIC
+#   endif
+#endif
+
+#ifdef COMPILER_SUPPORTS_GCC_DIAGNOSTIC
+#   pragma GCC diagnostic push
+#   pragma GCC diagnostic ignored "-Wpragmas"
+#   pragma GCC diagnostic ignored "-Wunknown-warning-option"
+#   pragma GCC diagnostic ignored "-Wclass-memaccess"
+#endif //COMPILER_SUPPORTS_GCC_DIAGNOSTIC
 
 #if __cplusplus>=201103L
 #   undef CV_HAS_MOVE_SEMANTICS
@@ -310,11 +325,26 @@ CV_API_DEC void cvector_dbg_check(const cvector* v);
 CV_API_DEC void cvector_create_with(cvector* v,size_t item_size_in_bytes,int (*item_cmp)(const void*,const void*),void (*item_ctr)(void*),void (*item_dtr)(void*),void (*item_cpy)(void*,const void*));
 CV_API_DEC void cvector_create(cvector* v,size_t item_size_in_bytes,int (*item_cmp)(const void*,const void*));
 #endif /* CV_ENABLE_DECLARATION_AND_DEFINITION */
+
+#ifdef COMPILER_SUPPORTS_GCC_DIAGNOSTIC
+#   pragma GCC diagnostic pop
+#endif //COMPILER_SUPPORTS_GCC_DIAGNOSTIC
+
 #endif /* C_VECTOR_TYPE_UNSAFE_H */
+
+
 
 #if (!defined(CV_ENABLE_DECLARATION_AND_DEFINITION) || defined(C_VECTOR_TYPE_UNSAFE_IMPLEMENTATION))
 #ifndef C_VECTOR_TYPE_UNSAFE_H_IMPLEMENTATION_GUARD
 #define C_VECTOR_TYPE_UNSAFE_H_IMPLEMENTATION_GUARD
+
+#ifdef COMPILER_SUPPORTS_GCC_DIAGNOSTIC
+#   pragma GCC diagnostic push
+#   pragma GCC diagnostic ignored "-Wpragmas"
+#   pragma GCC diagnostic ignored "-Wunknown-warning-option"
+#   pragma GCC diagnostic ignored "-Wclass-memaccess"
+#   pragma GCC diagnostic ignored "-Wignored-qualifiers"
+#endif //COMPILER_SUPPORTS_GCC_DIAGNOSTIC
 
 /* cv implementation */
 
@@ -757,6 +787,10 @@ CV_API_DEF void cvector_create(cvector* v,size_t item_size_in_bytes,int (*item_c
 
     cvector::~cvector() {cvector_free(this);}
 #endif
+
+#ifdef COMPILER_SUPPORTS_GCC_DIAGNOSTIC
+#   pragma GCC diagnostic pop
+#endif //COMPILER_SUPPORTS_GCC_DIAGNOSTIC
 
 #endif /* (!defined(CV_ENABLE_DECLARATION_AND_DEFINITION) || defined(C_VECTOR_TYPE_UNSAFE_IMPLEMENTATION)) */
 #endif /* C_VECTOR_TYPE_UNSAFE_H_IMPLEMENTATION_GUARD */

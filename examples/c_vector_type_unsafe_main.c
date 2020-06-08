@@ -36,7 +36,7 @@ cl /O2 /MT /Tp c_vector_type_unsafe_main.c /I"../include" /EHsc /link /out:c_vec
 #ifndef NO_SIMPLE_TEST
 /* The struct we'll use in a vector */
 /* 'typedef is mandatory: we need global visibility */
-typedef struct {
+typedef struct mystruct {
 int a,b,c;
 } mystruct;
 /* this will be used for the sorted vector test only */
@@ -254,7 +254,7 @@ static void StringVectorTest(void) {
 #endif
 /* Now something much more difficult.
    Tip for newbies: skip this part. */
-typedef struct {
+typedef struct big_t {
     float a;
     cvector v;  /* this is like a std::vector<mystruct> */
 } big_t;

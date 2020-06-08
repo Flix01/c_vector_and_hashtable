@@ -610,8 +610,8 @@ CH_API unsigned ch_hash32_FNV1a_str(const char* text)	{
 		-> ch_hash_uint hash8 = (ch_hash_uint) ((hash32*2654435769U) >> 24);					// 'fibonacci-folding'
 */
 /* if CH_NUM_BUCKETS == pow(2,num_buckets_pot_exponent), with num_buckets_pot_exponent<32, then we can 'convert' 32-bit hash values this way: */
-#	define CH_HASH_FROM_HASH32_USING_XORFOLDING(hash32,num_buckets_pot_exponent)	( (hash32>>num_buckets_pot_exponent) ^ ( hash32 & (((unsigned)1<<(num_buckets_pot_exponent))-1) ) )
-#	define CH_HASH_FROM_HASH32_USING_FIBFOLDING(hash32,num_buckets_pot_exponent)	((hash32*2654435769U) >> (32-num_buckets_pot_exponent))
+#	define CH_HASH_FROM_HASH32_USING_XORFOLDING(hash32,num_buckets_pot_exponent)	( (hash32>>(num_buckets_pot_exponent)) ^ ( hash32 & (((unsigned)1<<(num_buckets_pot_exponent))-1) ) )
+#	define CH_HASH_FROM_HASH32_USING_FIBFOLDING(hash32,num_buckets_pot_exponent)	((hash32*2654435769U) >> (32-(num_buckets_pot_exponent)))
 #endif /* CH_COMMON_FUNCTIONS_GUARD */
 
 
@@ -632,7 +632,6 @@ CH_API void CH_VECTOR_TYPE_FCT(_clear)(CH_VECTOR_TYPE* v,const CH_HASHTABLE_TYPE
     *((size_t*) &v->size)=0;
 }
 CH_API void CH_VECTOR_TYPE_FCT(_reserve)(CH_VECTOR_TYPE* v,size_t size,const CH_HASHTABLE_TYPE* ht)	{
-    /*printf("ok %s (sizeof(%s)=%lu)\n",CH_XSTR(CH_HASHTABLE_TYPE_FCT(_reserve)),CH_XSTR(CH_KEY_TYPE),sizeof(CH_KEY_TYPE));*/
     CH_ASSERT(v && ht);
     /* grows-only! */
     if (size>v->capacity) {
@@ -644,7 +643,6 @@ CH_API void CH_VECTOR_TYPE_FCT(_reserve)(CH_VECTOR_TYPE* v,size_t size,const CH_
     }
 }
 CH_API void CH_VECTOR_TYPE_FCT(_resize)(CH_VECTOR_TYPE* v,size_t size,const CH_HASHTABLE_TYPE* ht)	{
-    /*printf("%s\n",CH_XSTR(CH_VECTOR_TYPE_FCT(_resize)));*/
     CH_ASSERT(v && ht);
     if (size>v->capacity) CH_VECTOR_TYPE_FCT(_reserve)(v,size,ht);
     if (size<v->size)   {

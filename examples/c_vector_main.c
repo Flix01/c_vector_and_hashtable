@@ -87,7 +87,7 @@ v[0]={	20.000,	{[2:]	(10,3,3),(20,3,3)}}
 #ifndef NO_SIMPLE_TEST
 /* The struct we'll use in a vector */
 /* 'typedef is mandatory: we need global visibility */
-typedef struct {
+typedef struct mystruct {
 int a,b,c;
 } mystruct;
 /* this will be used for the sorted vector test only */
@@ -312,7 +312,7 @@ static void StringVectorTest(void) {
 #endif
 /* Now something much more difficult.
    Tip for newbies: skip this part. */
-typedef struct {
+typedef struct big_t {
     float a;
     cv_mystruct v;  /* this is like a std::vector<mystruct> */
 } big_t;
@@ -327,7 +327,7 @@ static void big_t_dtr(big_t* a)    {
 }
 static void big_t_cpy(big_t* a,const big_t* b)    {
     a->a=b->a;
-    cv_mystruct_cpy(&a->v,&b->v);   /* 'cv_mystruct_cpy(...)' has been created by CV_DECLARE(mystruct) */
+    cv_mystruct_cpy(&a->v,&b->v);   /* 'cv_mystruct_cpy(...)' has been created together with cv_mystruct in the first test */
 }
 /* same macro as above, but now for 'big_t' */
 #ifndef C_VECTOR_big_t_H
