@@ -77,11 +77,18 @@ v[1]={	20.000,	{[2:]	(10,3,3),(20,3,3)}}
 v[2]={	-100.000,	{[4:]	(20,3,-100),(20,333,-100),(333,333,-100),(333,333,333)}}
 v[0]={	20.000,	{[2:]	(10,3,3),(20,3,3)}}
 */
+
+/* The following line is completely optional, and must be used only
+   if you need to silence some compiler or static analyzer warning.
+   For further info, see: https://en.cppreference.com/w/c/string/byte/memcpy
+*/
+/*#define __STDC_WANT_LIB_EXT1__ 1*/ /* use memcpy_s, memmove_s and memset_s instead of memcpy, memmove and memset, if bound-checking functions are supported */
+#include "c_vector.h"
 #include <stdio.h>  /* printf */
 
 /*#define NO_SIMPLE_TEST*/
-/*#define NO_STRINGVECTOR_TEST*/
-/*#define NO_COMPLEXTEST*/
+#define NO_STRINGVECTOR_TEST
+#define NO_COMPLEXTEST
 /*#define NO_CPP_TEST*/
 
 #ifndef NO_SIMPLE_TEST
@@ -103,8 +110,7 @@ static int mystruct_cmp(const mystruct* a,const mystruct* b) {
 
 #ifndef C_VECTOR_mystruct_H     /* I think it's safer to add these guards */
 #define C_VECTOR_mystruct_H
-#   define CV_TYPE mystruct
-#   include "c_vector.h"
+CV_DECLARE_AND_DEFINE(mystruct) /* here we declare and define cv_mystruct (a.k.a. std::vector<mystruct>) */
 #endif /* C_VECTOR_mystruct_H */
 /* What the lines above do, is to create the type-safe vector structure:
 typedef struct {
@@ -221,7 +227,7 @@ static void SimpleTest(void)   {
 #endif /* NO_SIMPLE_TEST */
 
 #ifndef NO_STRINGVECTOR_TEST
-typedef char* string;
+typedef char* string;   // IMPORTANT: sometimes we MUST use a typedef (when using a pointer of a const qualifier for example)
 static int string_cmp(const string* a,const string* b) {
     if (*a==NULL) return (*b==NULL) ? 0 : 1;
     else if (*b==NULL) return 1;
@@ -241,8 +247,7 @@ static void string_cpy(string* a,const string* b)    {
 /* Here we do the same to generate cv_string (== std::vector<string>): */
 #ifndef C_VECTOR_string_H
 #define C_VECTOR_string_H
-#   define CV_TYPE string
-#   include "c_vector.h"
+CV_DECLARE_AND_DEFINE(string)   // Note that CV_DECLARE_AND_DEFINE(char*) would NOT work!
 #endif
 
 
@@ -263,11 +268,11 @@ static void StringVectorTest(void) {
        just to silence a compilation warning that appears ONLY when the code is
        compiled as C++ (=> you can safely remove them all in plain C).
     */
-    cv_string_insert_sorted_by_val(&s,(const string)"good morning",NULL,1);
-    cv_string_insert_sorted_by_val(&s,(const string)"hello world",NULL,1);
-    cv_string_insert_sorted_by_val(&s,(const string)"ciao",NULL,1);
-    cv_string_insert_sorted_by_val(&s,(const string)"hi",NULL,1);
-    cv_string_insert_sorted_by_val(&s,(const string)"golden day",NULL,1);
+    cv_string_insert_sorted_by_val(&s,(string)"good morning",NULL,1);
+    cv_string_insert_sorted_by_val(&s,(string)"hello world",NULL,1);
+    cv_string_insert_sorted_by_val(&s,(string)"ciao",NULL,1);
+    cv_string_insert_sorted_by_val(&s,(string)"hi",NULL,1);
+    cv_string_insert_sorted_by_val(&s,(string)"golden day",NULL,1);
     /* last 2 arguments are (int* match=NULL,int insert_even_if_item_match=1): we set the latter to 1 (true) */
     /* Also it can be useful to know that 'cv_xxx_insert_sorted' returns a size_t insertion 'position'. */
 
@@ -282,12 +287,12 @@ static void StringVectorTest(void) {
     for (i=0;i<s.size;i++) printf("s[%lu]=\"%s\";\n",i,s.v[i]?s.v[i]:"NULL");
 
     /* now we can serch the sorted vector for certain items this way */
-    position = cv_string_binary_search_by_val(&s,(const string)"bye bye",&match);
+    position = cv_string_binary_search_by_val(&s,(string)"bye bye",&match);
     printf("item=\"bye bye\"\t");
     if (match) printf("found at s[%lu].\n",position);
     else printf("not found.\n");
 
-    position = cv_string_binary_search_by_val(&s,(const string)"hello world",&match);
+    position = cv_string_binary_search_by_val(&s,(string)"hello world",&match);
     printf("item=\"hello world\"\t");
     if (match) printf("found at s[%lu].\n",position);
     else printf("not found.\n");
@@ -331,8 +336,7 @@ static void big_t_cpy(big_t* a,const big_t* b)    {
 }
 /* same macro as above, but now for 'big_t' */
 #ifndef C_VECTOR_big_t_H
-#   define CV_TYPE big_t
-#   include "c_vector.h"
+CV_DECLARE_AND_DEFINE(big_t)
 #endif /* C_VECTOR_big_t_H */
 
 static void ComplexTest(void) {
@@ -409,16 +413,14 @@ static void ComplexTest(void) {
 #ifdef __cplusplus
 
 #ifndef C_VECTOR_int_H
-#   define CV_TYPE int
-#   include "c_vector.h"    /* for 'cv_int' (the cvector.h alternative to std::vector<int>) */
+CV_DECLARE_AND_DEFINE(int) /* for 'cv_int' (the cvector.h alternative to std::vector<int>) */
 #endif /* C_VECTOR_int_H */
 
 #   include <vector> /* std::vector */
 
 typedef std::vector<int> stdvector_int;
 #ifndef C_VECTOR_stdvector_int_H
-#   define CV_TYPE stdvector_int
-#   include "c_vector.h"    /* for 'cv_stdvector_int' */
+CV_DECLARE_AND_DEFINE(stdvector_int)    /* for 'cv_stdvector_int' */
 #endif /* C_VECTOR_stdvector_int_H */
 
 

@@ -67,6 +67,7 @@ examples/c_hashtable_main
 examples/deprecated/main
 *.pro
 *.user
+*.user.*
 examples/c_vector_test.h
 examples/c_hashtable_test.h
 examples/c_vector_test.c
