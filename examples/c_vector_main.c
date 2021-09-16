@@ -87,8 +87,8 @@ v[0]={	20.000,	{[2:]	(10,3,3),(20,3,3)}}
 #include <stdio.h>  /* printf */
 
 /*#define NO_SIMPLE_TEST*/
-#define NO_STRINGVECTOR_TEST
-#define NO_COMPLEXTEST
+/*#define NO_STRINGVECTOR_TEST*/
+/*#define NO_COMPLEXTEST*/
 /*#define NO_CPP_TEST*/
 
 #ifndef NO_SIMPLE_TEST
