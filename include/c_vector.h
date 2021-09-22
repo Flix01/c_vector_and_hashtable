@@ -25,18 +25,18 @@ freely, subject to the following restrictions:
 
 /* USAGE: Please see the bundled "c_vector_main.c". */
 
-/* SCOPED DEFINITION: The following definitions must be set before each <c_vector.h>
-   inclusion, and get reset soon after:
-
-   CV_TYPE                      (mandatory)
-   CV_USE_VOID_PTRS_IN_CMP_FCT  (optional: if you want to share cmp_fcts with c style functions like qsort)
-   C_VECTOR_IMPLEMENTATION   	(optional: it needs CV_ENABLE_DECLARATION_AND_DEFINITION. See history for version 1.06)
-   C_VECTOR_FORCE_DECLARATION  	(optional: it needs CV_ENABLE_DECLARATION_AND_DEFINITION. See history for version 1.06)
-
+/*
    GLOBAL DEFINITIONS: The following definitions (when used) must be set
    globally (= in the Project Options or in a StdAfx.h file):
 
-   CV_NO_PLACEMENT_NEW                  // (c++ mode only) it does not define (unused) helper stuff like: CV_PLACEMENT_NEW, cpp_ctr,cpp_dtr,cpp_cpy,cpp_cmp
+   CV_ENABLE_UNTESTED_FEATURES          // it enables stuff that's currently untested, and not used in the demo 'c_vector_main.c'.
+   CV_DISABLE_FAKE_MEMBER_FUNCTIONS     // it disables "fake-member-function-syntax" (e.g. v.push_back(&v,item);). Use it to improve performance and reduce memory.
+   CV_DISABLE_CLEARING_ITEM_MEMORY      // normally before each item is constructed (and before the user-provided item_ctr function, if present, is called), the item memory is cleared to zero by default to increase code robustness. To prevent this from happening (and speed up code) this definition can be used.
+   CV_USE_VOID_PTRS_IN_CMP_FCT          // define this if you want to share vector item compare functions (when used) with c style functions like qsort. Basically you need to use const void* pointers as arguments.
+   CV_FORCE_MEMCPY_S                    // it enforces the use of memcpy_s(...) and similar functions (but the standard and safer way is to define __STDC_WANT_LIB_EXT1__. Please see: https://en.cppreference.com/w/c/string/byte/memcpy).
+   CV_NO_MEMCPY_S                       // it forces the use of memcpy(...) and similar functions, in cases where memcpy_s(...) is used by default (currently only Visual Studio 2005 (8.0) or newer).
+   CV_ENABLE_EXTRA_FEATURES             // when used with CV_ENABLE_UNTESTED_FEATURES, it enables the (undocumented, untested and probably useless) 'cvh_string_t' struct.
+   CV_NO_PLACEMENT_NEW                  // (c++ mode only) it does not define helper stuff like: CV_PLACEMENT_NEW, cpp_ctr,cpp_dtr,cpp_cpy,cpp_cmp.
    CV_MALLOC
    CV_REALLOC
    CV_FREE
@@ -44,10 +44,10 @@ freely, subject to the following restrictions:
    CV_NO_ASSERT
    CV_NO_STDIO
    CV_NO_STDLIB
-   CV_API_INL                           // this simply defines the 'inline' keyword syntax (defaults to __inline)
-   CV_API                               // used always when CV_ENABLE_DECLARATION_AND_DEFINITION is not defined and in some global or private functions otherwise
-   CV_API_DEC                           // defaults to CV_API, or to 'CV_API_INL extern' if CV_ENABLE_DECLARATION_AND_DEFINITION is defined
-   CV_APY_DEF                           // defaults to CV_API, or to nothing if CV_ENABLE_DECLARATION_AND_DEFINITION is defined
+   CV_API_INL                           // this simply defines the 'inline' keyword syntax (defaults to __inline).
+   CV_API                               // used always when CV_ENABLE_DECLARATION_AND_DEFINITION is not defined and in some global or private functions otherwise.
+   CV_API_DEC                           // defaults to CV_API, or to 'CV_API_INL extern' if CV_ENABLE_DECLARATION_AND_DEFINITION is defined.
+   CV_APY_DEF                           // defaults to CV_API, or to nothing if CV_ENABLE_DECLARATION_AND_DEFINITION is defined.
 */
 
 #ifndef C_VECTOR_H_
@@ -55,14 +55,26 @@ freely, subject to the following restrictions:
 
 
 #ifndef C_VECTOR_VERSION
-#define C_VECTOR_VERSION        "1.13"
-#define C_VECTOR_VERSION_NUM    0113
+#define C_VECTOR_VERSION        "1.14"
+#define C_VECTOR_VERSION_NUM    0114
 #endif
 
 
 /* HISTORY:
-   C_VECTOR_VERSION_NUM 114 TODO
-   -> add serialization/deserialization support
+   C_VECTOR_VERSION_NUM 114
+   -> restored definition CV_DISABLE_FAKE_MEMBER_FUNCTIONS
+   -> added serialization/deserialization support:
+        -> now cv_xxx_create_with(...) takes two additional arguments: item_serialization and item_deserialization function pointers.
+           If they are NULL, items will be serialized/deserialized using plain memcpy calls (good only for plain item structs without pointers or vectors inside).
+        -> a new helper struct cvh_serializer_t must be used to serialize/deserialize vectors (and items if needed) (please see "c_vector_main.c").
+        -> code near the bottom of this file (search backwards for "(CV_TYPE,_serialize)" and "(CV_TYPE,_deserialize)")
+           can be taken as a reference for implementing item_serialize/item_deserialize funtions.
+        -> serialization/deserialization is in binary-mode, it's NOT endian-independent and the size of each type and struct must match in both serialization and deserialization
+           (it would be nice to know what common systems are compatible).
+        -> IMPORTANT: all the functions cvh_serializer_write(...)/cvh_serializer_read(...) are UNTESTED!
+           They are currently disabled by default, and can be enabled with the CV_ENABLE_UNTESTED_FEATURES definition.
+        -> added the undocumented, untested and probably useless struct 'cvh_string_t'. To enable it,
+           CV_ENABLE_EXTRA_FEATURES must be defined together with CV_ENABLE_UNTESTED_FEATURES.
 
    C_VECTOR_VERSION_NUM 113
    -> restored syntax used in version 1.05 (*), so that now:
@@ -188,10 +200,10 @@ freely, subject to the following restrictions:
 #if (defined (NDEBUG) || defined (_NDEBUG))
 #   undef CV_NO_ASSERT
 #   define CV_NO_ASSERT
-#   undef CV_NO_STDIO
-#   define CV_NO_STDIO
-#   undef CV_NO_STDLIB
-#   define CV_NO_STDLIB
+/*#   undef CV_NO_STDIO
+#   define CV_NO_STDIO*/
+/*#   undef CV_NO_STDLIB
+#   define CV_NO_STDLIB*/ /* no exit(1) on bad malloc, realloc ? */
 #endif
 
 #ifndef CV_MALLOC
@@ -234,6 +246,14 @@ freely, subject to the following restrictions:
 
 #ifndef CV_API /* can we remove 'static' here? */
 #define CV_API CV_API_INL static
+#endif
+
+#ifndef CV_ZERO_INIT
+#   ifndef __cplusplus
+#       define CV_ZERO_INIT {0}
+#   else
+#       define CV_ZERO_INIT {}
+#   endif
 #endif
 
 #ifndef CV_ENABLE_DECLARATION_AND_DEFINITION
@@ -293,6 +313,14 @@ freely, subject to the following restrictions:
 #   define CV_CMP_TYPE(CV_TYPE) CV_TYPE
 #endif
 
+
+/* cvh_serializer_t provides serialization/deserialization support for all the vector macros that follow */
+typedef struct cvh_serializer_t {
+    unsigned char* v;
+    size_t size,capacity;
+    /* mutable */ size_t offset;  /* used as read-pointer in deserialization. 'mutable' is not available in plain C (and it's better not to use 'ifdef __cplusplus' here) */
+} cvh_serializer_t;
+
 #ifdef __cplusplus
 #   define CV_CPP_DECLARATION_CHUNK0(CV_TYPE)    \
         CV_VECTOR_TYPE(CV_TYPE)();   \
@@ -313,17 +341,8 @@ freely, subject to the following restrictions:
 #   define CV_CPP_DECLARATION_CHUNK1(CV_TYPE)   /*no-op*/
 #endif /*__cplusplus*/
 
-
-#define CV_DECLARE(CV_TYPE)										\
-typedef struct CV_VECTOR_TYPE(CV_TYPE) CV_VECTOR_TYPE(CV_TYPE);       \
-struct CV_VECTOR_TYPE(CV_TYPE) {         \
-	CV_TYPE * v;    \
-	const size_t size;  \
-	const size_t capacity;  \
-    void (*const item_ctr)(CV_TYPE*);                     /* optional (can be NULL) */  \
-    void (*const item_dtr)(CV_TYPE*);                     /* optional (can be NULL) */  \
-    void (*const item_cpy)(CV_TYPE*,const CV_TYPE*);		/* optional (can be NULL) */    \
-    int (*const item_cmp)(const CV_CMP_TYPE(CV_TYPE)*,const CV_CMP_TYPE(CV_TYPE)*);		/* optional (can be NULL) (for sorted vectors only) */  \
+#ifndef CV_DISABLE_FAKE_MEMBER_FUNCTIONS
+#   define CV_FAKE_MEMBER_FUNCTIONS_DECL_CHUNK(CV_TYPE)  \
     void (* const free)(CV_VECTOR_TYPE(CV_TYPE)* v); \
     void (* const clear)(CV_VECTOR_TYPE(CV_TYPE)* v);    \
     void (* const shrink_to_fit)(CV_VECTOR_TYPE(CV_TYPE)* v);    \
@@ -347,7 +366,27 @@ struct CV_VECTOR_TYPE(CV_TYPE) {         \
     int (* const remove_at)(CV_VECTOR_TYPE(CV_TYPE)* v,size_t position); \
     int (* const remove_range_at)(CV_VECTOR_TYPE(CV_TYPE)* v,size_t start_item_position,size_t num_items_to_remove); \
     void (* const cpy)(CV_VECTOR_TYPE(CV_TYPE)* a,const CV_VECTOR_TYPE(CV_TYPE)* b);  \
-    void (* const dbg_check)(const CV_VECTOR_TYPE(CV_TYPE)* v);  \
+    void (* const dbg_check)(const CV_VECTOR_TYPE(CV_TYPE)* v); \
+    void (* const serialize)(const CV_VECTOR_TYPE(CV_TYPE)* v,cvh_serializer_t* serializer);  \
+    int (* const deserialize)(CV_VECTOR_TYPE(CV_TYPE)* v,const cvh_serializer_t* deserializer);
+#else /*CV_DISABLE_FAKE_MEMBER_FUNCTIONS*/
+#   define CV_FAKE_MEMBER_FUNCTIONS_DECL_CHUNK(CV_TYPE) /*no-op*/
+#endif /*CV_DISABLE_FAKE_MEMBER_FUNCTIONS*/
+
+
+#define CV_DECLARE(CV_TYPE)										\
+typedef struct CV_VECTOR_TYPE(CV_TYPE) CV_VECTOR_TYPE(CV_TYPE);       \
+struct CV_VECTOR_TYPE(CV_TYPE) {         \
+	CV_TYPE * v;    \
+	const size_t size;  \
+	const size_t capacity;  \
+    void (*const item_ctr)(CV_TYPE*);                     /* optional (can be NULL) */  \
+    void (*const item_dtr)(CV_TYPE*);                     /* optional (can be NULL) */  \
+    void (*const item_cpy)(CV_TYPE*,const CV_TYPE*);		/* optional (can be NULL) */    \
+    int (*const item_cmp)(const CV_CMP_TYPE(CV_TYPE)*,const CV_CMP_TYPE(CV_TYPE)*);		/* optional (can be NULL) (for sorted vectors only) */  \
+    void (*const item_serialize)(const CV_TYPE*,cvh_serializer_t*);   \
+    int (*const item_deserialize)(CV_TYPE*,const cvh_serializer_t*);   \
+    CV_FAKE_MEMBER_FUNCTIONS_DECL_CHUNK(CV_TYPE)    \
     CV_CPP_DECLARATION_CHUNK0(CV_TYPE);  \
     CV_CPP_DECLARATION_CHUNK1(CV_TYPE); \
 };  \
@@ -376,8 +415,29 @@ CV_API_DEC int CV_VECTOR_TYPE_FCT(CV_TYPE,_remove_range_at)(CV_VECTOR_TYPE(CV_TY
 CV_API_DEC void CV_VECTOR_TYPE_FCT(CV_TYPE,_cpy)(CV_VECTOR_TYPE(CV_TYPE)* a,const CV_VECTOR_TYPE(CV_TYPE)* b);    \
 CV_API_DEC void CV_VECTOR_TYPE_FCT(CV_TYPE,_shrink_to_fit)(CV_VECTOR_TYPE(CV_TYPE)* v);  \
 CV_API_DEC void CV_VECTOR_TYPE_FCT(CV_TYPE,_dbg_check)(const CV_VECTOR_TYPE(CV_TYPE)* v);    \
-CV_API_DEC void CV_VECTOR_TYPE_FCT(CV_TYPE,_create_with)(CV_VECTOR_TYPE(CV_TYPE)* v,int (*item_cmp)(const CV_CMP_TYPE(CV_TYPE)*,const CV_CMP_TYPE(CV_TYPE)*),void (*item_ctr)(CV_TYPE*),void (*item_dtr)(CV_TYPE*),void (*item_cpy)(CV_TYPE*,const CV_TYPE*)); \
+CV_API_DEC void CV_VECTOR_TYPE_FCT(CV_TYPE,_serialize)(const CV_VECTOR_TYPE(CV_TYPE)* v,cvh_serializer_t* serializer);    \
+CV_API_DEC int CV_VECTOR_TYPE_FCT(CV_TYPE,_deserialize)(CV_VECTOR_TYPE(CV_TYPE)* v,const cvh_serializer_t* deserializer);    \
+CV_API_DEC void CV_VECTOR_TYPE_FCT(CV_TYPE,_create_with)(CV_VECTOR_TYPE(CV_TYPE)* v,int (*item_cmp)(const CV_CMP_TYPE(CV_TYPE)*,const CV_CMP_TYPE(CV_TYPE)*),void (*item_ctr)(CV_TYPE*),void (*item_dtr)(CV_TYPE*),void (*item_cpy)(CV_TYPE*,const CV_TYPE*),void (*item_serialize)(const CV_TYPE*,cvh_serializer_t*),int (*item_deserialize)(CV_TYPE*,const cvh_serializer_t*)); \
 CV_API_DEC void CV_VECTOR_TYPE_FCT(CV_TYPE,_create)(CV_VECTOR_TYPE(CV_TYPE)* v,int (*item_cmp)(const CV_CMP_TYPE(CV_TYPE)*,const CV_CMP_TYPE(CV_TYPE)*));  
+
+
+/*  To use memcpy_s, memmove_s and memset_s, in your source file(s), please add this line before including this header:
+#define __STDC_WANT_LIB_EXT1__ 1
+#include "c_vector.h"
+*/
+#if (defined(CV_FORCE_MEMCPY_S) && defined(CV_NO_MEMCPY_S))
+#   error CV_FORCE_MEMCPY_S and CV_NO_MEMCPY_S can't be both defined.
+#endif
+#if (!defined(CV_NO_MEMCPY_S) && (defined(__STDC_LIB_EXT1__) || defined(CV_FORCE_MEMCPY_S) || (defined(_MSC_VER) && _MSC_VER>=1400)))   /* 1400 == Visual Studio 8.0 2005 */
+#   define CV_MEMCPY(DST,SRC,SIZE)      memcpy_s((unsigned char*)DST,SIZE,(unsigned char*)SRC,SIZE)
+#   define CV_MEMMOVE(DST,SRC,SIZE)     memmove_s((unsigned char*)DST,SIZE,(unsigned char*)SRC,SIZE)
+#   define CV_MEMSET(DST,VALUE,SIZE)    memset_s((unsigned char*)DST,SIZE,VALUE,SIZE)
+#else
+#   define CV_MEMCPY(DST,SRC,SIZE)      memcpy((unsigned char*)DST,(unsigned char*)SRC,SIZE)
+#   define CV_MEMMOVE(DST,SRC,SIZE)     memmove((unsigned char*)DST,(unsigned char*)SRC,SIZE)
+#   define CV_MEMSET(DST,VALUE,SIZE)    memset((unsigned char*)DST,VALUE,SIZE)
+#endif
+
 
 #ifndef CV_COMMON_FUNCTIONS_GUARD
 #define CV_COMMON_FUNCTIONS_GUARD
@@ -430,22 +490,188 @@ CV_API void cv_display_bytes(size_t bytes_in)   {
     }
 }
 #endif /* CV_NO_STDIO */
+
+/* cvh_serializer_t functions */
+CV_API void cvh_serializer_reserve(cvh_serializer_t* p,size_t new_capacity)    {
+    if (new_capacity>p->capacity) {
+        new_capacity = new_capacity<p->capacity*3/2 ? p->capacity*3/2 : new_capacity; /* grow factor */
+        cv_safe_realloc((void**)&p->v,new_capacity);CV_ASSERT(p->v);
+        p->capacity = new_capacity;
+    }
+}
+CV_API void cvh_serializer_destroy(cvh_serializer_t* p)    {cv_free(p->v);CV_MEMSET(p,0,sizeof(*p));}
+#   ifndef CV_NO_STDIO
+CV_API int cvh_serializer_save(const cvh_serializer_t* p,const char* path)    {
+    FILE* f = fopen(path,"wb");if (f) {fwrite(p->v,p->size,1,f);fclose(f);return 1;}
+    return 0;
+}
+CV_API int cvh_serializer_load(cvh_serializer_t* p,const char* path)    {
+    FILE* f=fopen(path,"rb");
+    if (f) {
+        size_t file_size = 0;
+        fseek(f,0,SEEK_END);file_size=(size_t) ftell(f);fseek(f,0,SEEK_SET);
+        cvh_serializer_destroy(p);   /* optional */
+        cvh_serializer_reserve(p,file_size);
+        fread(p->v,file_size,1,f);p->size=file_size;
+        fclose(f);
+        return 1;
+    }
+    return 0;
+}
+#   endif /*CV_NO_STDIO*/
+
+#ifdef CV_ENABLE_UNTESTED_FEATURES
+/* the following cvh_serializer_xxx(...) functions have never been used (not just tested, USED!) */
+CV_API void cvh_serializer_offset_rewind(const cvh_serializer_t* d)  {*((size_t*)&d->offset)=0;}
+CV_API void cvh_serializer_offset_set(const cvh_serializer_t* d,size_t offset)  {CV_ASSERT(offset<=d->size);*((size_t*)&d->offset)=offset;}
+CV_API void cvh_serializer_offset_advance(const cvh_serializer_t* d,size_t amount)  {CV_ASSERT(d->offset+amount<=d->size);*((size_t*)&d->offset)+=amount;}
+#   define CVH_SERIALIZER_WRITE(S,type,value)   {cvh_serializer_reserve(S,S->size + sizeof(type));*((type*) (&S->v[S->size])) = value;S->size+=sizeof(type);}
+#   define CVH_DESERIALIZER_READ(D,type,value_ptr)   { \
+       int check = (D->offset+sizeof(type)<=D->size);CV_ASSERT(check);if (!check) return 0; \
+       *value_ptr = *((type*) &D->v[D->offset]);*((size_t*) &D->offset)+=sizeof(type); return 1;}
+CV_API void cvh_serializer_write_size_t(cvh_serializer_t* s,size_t value) {CVH_SERIALIZER_WRITE(s,size_t,value)}
+CV_API int cvh_serializer_read_size_t(const cvh_serializer_t* d,size_t* value) {CVH_DESERIALIZER_READ(d,size_t,value)}
+CV_API void cvh_serializer_write_unsigned_char(cvh_serializer_t* s,unsigned char value) {CVH_SERIALIZER_WRITE(s,unsigned char,value)}
+CV_API int cvh_serializer_read_unsigned_char(const cvh_serializer_t* d,unsigned char* value) {CVH_DESERIALIZER_READ(d,unsigned char,value)}
+CV_API void cvh_serializer_write_signed_char(cvh_serializer_t* s,signed char value) {CVH_SERIALIZER_WRITE(s,signed char,value)}
+CV_API int cvh_serializer_read_signed_char(const cvh_serializer_t* d,signed char* value) {CVH_DESERIALIZER_READ(d,signed char,value)}
+CV_API void cvh_serializer_write_unsigned_short(cvh_serializer_t* s,unsigned short value) {CVH_SERIALIZER_WRITE(s,unsigned short,value)}
+CV_API int cvh_serializer_read_unsigned_short(const cvh_serializer_t* d,unsigned short* value) {CVH_DESERIALIZER_READ(d,unsigned short,value)}
+CV_API void cvh_serializer_write_short(cvh_serializer_t* s,short value) {CVH_SERIALIZER_WRITE(s,short,value)}
+CV_API int cvh_serializer_read_short(const cvh_serializer_t* d,short* value) {CVH_DESERIALIZER_READ(d,short,value)}
+CV_API void cvh_serializer_write_unsigned_int(cvh_serializer_t* s,unsigned value) {CVH_SERIALIZER_WRITE(s,unsigned,value)}
+CV_API int cvh_serializer_read_unsigned_int(const cvh_serializer_t* d,unsigned* value) {CVH_DESERIALIZER_READ(d,unsigned,value)}
+CV_API void cvh_serializer_write_int(cvh_serializer_t* s,int value) {CVH_SERIALIZER_WRITE(s,int,value)}
+CV_API int cvh_serializer_read_int(const cvh_serializer_t* d,int* value) {CVH_DESERIALIZER_READ(d,int,value)}
+CV_API void cvh_serializer_write_unsigned_long(cvh_serializer_t* s,unsigned long value) {CVH_SERIALIZER_WRITE(s,unsigned long,value)}
+CV_API int cvh_serializer_read_unsigned_long(const cvh_serializer_t* d,unsigned long* value) {CVH_DESERIALIZER_READ(d,unsigned long,value)}
+CV_API void cvh_serializer_write_long(cvh_serializer_t* s,long value) {CVH_SERIALIZER_WRITE(s,long,value)}
+CV_API int cvh_serializer_read_long(const cvh_serializer_t* d,long* value) {CVH_DESERIALIZER_READ(d,long,value)}
+CV_API void cvh_serializer_write_unsigned_long_long(cvh_serializer_t* s,unsigned long long value) {CVH_SERIALIZER_WRITE(s,unsigned long long,value)}
+CV_API int cvh_serializer_read_unsigned_long_long(const cvh_serializer_t* d,unsigned long long* value) {CVH_DESERIALIZER_READ(d,unsigned long long,value)}
+CV_API void cvh_serializer_write_long_long(cvh_serializer_t* s,long long value) {CVH_SERIALIZER_WRITE(s,long long,value)}
+CV_API int cvh_serializer_read_long_long(const cvh_serializer_t* d,long long* value) {CVH_DESERIALIZER_READ(d,long long,value)}
+CV_API void cvh_serializer_write_float(cvh_serializer_t* s,float value) {CVH_SERIALIZER_WRITE(s,float,value)}
+CV_API int cvh_serializer_read_float(const cvh_serializer_t* d,float* value) {CVH_DESERIALIZER_READ(d,float,value)}
+CV_API void cvh_serializer_write_double(cvh_serializer_t* s,double value) {CVH_SERIALIZER_WRITE(s,double,value)}
+CV_API int cvh_serializer_read_double(const cvh_serializer_t* d,double* value) {CVH_DESERIALIZER_READ(d,double,value)}
+#   undef CVH_SERIALIZER_WRITE
+#   undef CVH_SERIALIZER_READ
+CV_API void cvh_serializer_write_size_t_using_mipmaps(cvh_serializer_t* s,size_t value) {
+    /* In most use-cases this should have less memory impact than 'cvh_serializer_write_size_t(...)' */
+    int overflow=value>=255;cvh_serializer_write_unsigned_char(s,(unsigned char)(overflow ? 255 : value));if (!overflow) return;
+    if (sizeof(unsigned short)==2) {overflow=value>=65535;cvh_serializer_write_unsigned_short(s,(unsigned short)(overflow ? 65535 : value));if (!overflow) return;}
+    if (sizeof(unsigned int)==4) {overflow=value>=4294967295;cvh_serializer_write_unsigned_int(s,(unsigned int)(overflow ? 4294967295 : value));if (!overflow) return;}
+    cvh_serializer_write_size_t(s,value);
+}
+CV_API int cvh_serializer_read_size_t_using_mipmaps(const cvh_serializer_t* d,size_t* value) {
+    /* In most use-cases this should have less memory impact than 'cvh_serializer_read_size_t(...)' */
+    int check = 0;*value=0;
+    {unsigned char v=255,vmax=255;if ((check=cvh_serializer_read_unsigned_char(d,&v)) && v<vmax) {*value=v;return 1;} if (!check) return 0;}
+    if (sizeof(unsigned short)==2) {unsigned short v=65535,vmax=65535;if ((check=cvh_serializer_read_unsigned_short(d,&v)) && v<vmax) {*value=v;return 1;} if (!check) return 0;}
+    if (sizeof(unsigned int)==4) {unsigned int v=4294967295,vmax=4294967295;if ((check=cvh_serializer_read_unsigned_int(d,&v)) && v<vmax) {*value=v;return 1;} if (!check) return 0;}
+    return cvh_serializer_read_size_t(d,value);
+}
+CV_API void cvh_serializer_write_string(cvh_serializer_t* s,const char* str_beg,const char* str_end /*=NULL*/)    {
+    if (!str_beg) cvh_serializer_write_size_t_using_mipmaps(s,0);   /* we want to preserve NULL strings */
+    else {
+        const size_t str_len = str_end ? (size_t)(str_end-str_beg) : strlen(str_beg);
+        const size_t str_len_plus_trailing_zero = str_beg[str_len]=='\0' ? str_len : str_len+1;
+        cvh_serializer_write_size_t_using_mipmaps(s,str_len_plus_trailing_zero);
+        cvh_serializer_reserve(s,s->size + str_len_plus_trailing_zero);
+        CV_MEMCPY(&s->v[s->size],str_beg,str_len);
+        if (str_len_plus_trailing_zero>str_len) s->v[s->size+str_len]='\0';
+        s->size+=str_len_plus_trailing_zero;
+    }
+}
+CV_API int cvh_serializer_read_string(const cvh_serializer_t* d,char** pstr,void* (*my_realloc)(void*,size_t)/*=NULL*/,void (*my_free)(void*)/*=NULL*/)    {
+    int check=0;size_t str_len_plus_one = 0;
+    CV_ASSERT(d && pstr);
+    if (!cvh_serializer_read_size_t_using_mipmaps(d,&str_len_plus_one)) return 0;
+    check=d->offset+str_len_plus_one<=d->size;CV_ASSERT(check);if (!check) return 0;
+    if (str_len_plus_one==0)    {if (*pstr) {if (my_free) my_free(*pstr);else CV_FREE(*pstr);} return 1;}
+    CV_ASSERT(d->v[d->offset+str_len_plus_one-1]=='\0');
+    if (!(*pstr) || strlen(*pstr)<str_len_plus_one-1) {
+        if (my_realloc) *pstr=(char*)my_realloc(*pstr,str_len_plus_one);
+        else            *pstr=(char*)CV_REALLOC(*pstr,str_len_plus_one);
+        CV_ASSERT(*pstr);
+    }
+    CV_MEMCPY(*pstr,&d->v[d->offset],str_len_plus_one);*((size_t*)&d->offset)+=str_len_plus_one;
+    return 1;
+}
+CV_API void cvh_serializer_write_blob(cvh_serializer_t* s,const void* blob,size_t blob_size_in_bytes)    {
+    if (!blob || blob_size_in_bytes==0) cvh_serializer_write_size_t_using_mipmaps(s,0);   /* we want to preserve NULL blobs */
+    else {
+        cvh_serializer_write_size_t_using_mipmaps(s,blob_size_in_bytes);
+        cvh_serializer_reserve(s,s->size + blob_size_in_bytes);
+        CV_MEMCPY(&s->v[s->size],blob,blob_size_in_bytes);s->size+=blob_size_in_bytes;
+    }
+}
+CV_API int cvh_serializer_read_blob(const cvh_serializer_t* d,void** pblob,size_t* blob_size_out,void* (*my_realloc)(void*,size_t)/*=NULL*/,void (*my_free)(void*)/*=NULL*/)    {
+    int check=0;size_t blob_size = 0;if (blob_size_out) *blob_size_out=0;
+    CV_ASSERT(d && pblob);
+    if (!cvh_serializer_read_size_t_using_mipmaps(d,&blob_size)) return 0;
+    check=d->offset+blob_size<=d->size;CV_ASSERT(check);if (!check) return 0;
+    if (blob_size==0)    {if (*pblob) {if (my_free) my_free(*pblob);else CV_FREE(*pblob);} return 1;}
+    if (my_realloc) *pblob=(char*)my_realloc(*pblob,blob_size);
+    else            *pblob=(char*)CV_REALLOC(*pblob,blob_size);
+    CV_ASSERT(*pblob);
+    CV_MEMCPY(*pblob,&d->v[d->offset],blob_size);*((size_t*)&d->offset)+=blob_size;
+    if (blob_size_out) *blob_size_out=blob_size;
+    return 1;
+}
+
+#ifdef CV_ENABLE_EXTRA_FEATURES
+/* A constant, grow-only string pool. Basically you store the 'size_t' returned by 'cvh_string_push_back(...)' instead of a char* */
+/* Warning: deeply UNTESTED code */
+typedef struct cvh_string_t {char* v;size_t size,capacity;} cvh_string_t;
+CV_API void cvh_string_reserve(cvh_string_t* p,size_t new_capacity)    {
+    if (new_capacity>p->capacity) {
+        new_capacity = new_capacity<p->capacity*3/2 ? p->capacity*3/2 : new_capacity; /* grow factor */
+        cv_safe_realloc((void**)&p->v,new_capacity);assert(p->v);
+        p->capacity = new_capacity;
+    }
+}
+CV_API size_t cvh_string_push_back(cvh_string_t* p,const char* str_beg,const char* str_end/*=NULL*/)    {
+    const size_t old_size = p->size;
+    assert(str_beg);
+    const size_t len = (!str_end) ? strlen(str_beg) : (size_t)(str_end-str_beg);
+    cvh_string_reserve(p,p->size+len+1);
+    CV_MEMCPY(&p->v[p->size],str_beg,len);
+    p->v[p->size+len]='\0';
+    p->size+=len+1;
+    return old_size;
+}
+CV_API void cvh_string_destroy(cvh_string_t* p)    {cv_free(p->v);CV_MEMSET(p,0,sizeof(*p));}
+CV_API void cvh_string_copy(cvh_string_t* dst,const cvh_string_t* src)   {
+    assert(src && dst);
+    if (dst->capacity<src->size) cvh_string_reserve(dst,src->size);
+    CV_MEMCPY(dst->v,src->v,src->size);dst->size = src->size;
+}
+CV_API void cvh_string_clear(cvh_string_t* p)   {p->size=0;}
+CV_API void cvh_string_serialize(const cvh_string_t* p,cvh_serializer_t* s)    {
+    const size_t size_t_size_in_bytes = sizeof(size_t);
+    const size_t p_v_size_in_bytes = p->size;
+    assert(p && s);
+    cvh_serializer_reserve(s,size_t_size_in_bytes + p_v_size_in_bytes);
+    *((size_t*) &s->v[s->size]) = p->size;s->size+=size_t_size_in_bytes;
+    CV_MEMCPY(&s->v[s->size],p->v,p_v_size_in_bytes);s->size+=p_v_size_in_bytes;
+}
+CV_API int cvh_string_deserialize(cvh_string_t* p,const cvh_serializer_t* d)    {
+    const size_t size_t_size_in_bytes = sizeof(size_t);size_t psize=0;
+    int check = d->offset+size_t_size_in_bytes<=d->size;CV_ASSERT(check);if (!check) return 0;
+    assert(p && d);
+    psize = *((const size_t*) &d->v[d->offset]);*((size_t*)&d->offset)+=size_t_size_in_bytes;
+    check = d->offset+psize<=d->size;CV_ASSERT(check);if (!check) return 0;
+    cvh_string_reserve(p,psize);
+    CV_MEMCPY(p->v,&d->v[d->offset],psize);*((size_t*)&d->offset)+=psize;p->size=psize;
+    return 1;
+}
+#endif /* CV_ENABLE_EXTRA_FEATURES */
+
+#endif /* CV_ENABLE_UNTESTED_FEATURES */
+
 #endif /* CV_COMMON_FUNCTIONS_GUARD */
-
-
-/*  To use memcpy_s, memmove_s and memset_s, in your source file(s), please add this line before including this header:
-#define __STDC_WANT_LIB_EXT1__ 1
-#include "c_vector.h"
-*/
-#if ((defined(__STDC_LIB_EXT1__) /*|| (defined(__cplusplus) && __cplusplus>=201103L)*/) || defined(CV_FORCE_MEMCPY_S) /*|| (defined(_MSC_VER) && !defined(CV_NO_MEMCPY_S))*/)
-#   define CV_MEMCPY(DST,SRC,SIZE)      memcpy_s((unsigned char*)DST,SIZE,(unsigned char*)SRC,SIZE)
-#   define CV_MEMMOVE(DST,SRC,SIZE)     memmove_s((unsigned char*)DST,SIZE,(unsigned char*)SRC,SIZE)
-#   define CV_MEMSET(DST,VALUE,SIZE)    memset_s((unsigned char*)DST,SIZE,VALUE,SIZE)
-#else
-#   define CV_MEMCPY(DST,SRC,SIZE)      memcpy((unsigned char*)DST,(unsigned char*)SRC,SIZE)
-#   define CV_MEMMOVE(DST,SRC,SIZE)     memmove((unsigned char*)DST,(unsigned char*)SRC,SIZE)
-#   define CV_MEMSET(DST,VALUE,SIZE)    memset((unsigned char*)DST,VALUE,SIZE)
-#endif
 
 
 #ifndef CV_NO_STDIO
@@ -467,38 +693,92 @@ CV_API void cv_display_bytes(size_t bytes_in)   {
 #endif /*CV_NO_STDIO*/
 
 
+#ifndef CV_DISABLE_FAKE_MEMBER_FUNCTIONS
+#   define CV_FAKE_MEMBER_FUNCTIONS_DEF_CHUNK0(CV_TYPE)  \
+        typedef void (* free_clear_shrink_to_fit_pop_back_mf)(CV_VECTOR_TYPE(CV_TYPE)*); \
+        typedef void (* swap_mf)(CV_VECTOR_TYPE(CV_TYPE)*,CV_VECTOR_TYPE(CV_TYPE)*);  \
+        typedef void (* reserve_mf)(CV_VECTOR_TYPE(CV_TYPE)*,size_t);    \
+        typedef void (* resize_mf)(CV_VECTOR_TYPE(CV_TYPE)*,size_t); \
+        typedef void (* resize_with_mf)(CV_VECTOR_TYPE(CV_TYPE)*,size_t,const CV_TYPE*); \
+        typedef void (* resize_with_by_val_mf)(CV_VECTOR_TYPE(CV_TYPE)*,size_t,const CV_TYPE);   \
+        typedef void (* push_back_mf)(CV_VECTOR_TYPE(CV_TYPE)*,const CV_TYPE*);  \
+        typedef void (* push_back_by_val_mf)(CV_VECTOR_TYPE(CV_TYPE)*,const CV_TYPE);    \
+        typedef size_t (* search_mf)(const CV_VECTOR_TYPE(CV_TYPE)*,const CV_TYPE*,int*);    \
+        typedef size_t (* search_by_val_mf)(const CV_VECTOR_TYPE(CV_TYPE)*,const CV_TYPE,int*);  \
+        typedef size_t (* insert_at_mf)(CV_VECTOR_TYPE(CV_TYPE)*,const CV_TYPE*,size_t); \
+        typedef size_t (* insert_at_by_val_mf)(CV_VECTOR_TYPE(CV_TYPE)*,const CV_TYPE,size_t);   \
+        typedef size_t (* insert_range_at_mf)(CV_VECTOR_TYPE(CV_TYPE)*,const CV_TYPE*,size_t,size_t);    \
+        typedef size_t (* insert_sorted_mf)(CV_VECTOR_TYPE(CV_TYPE)*,const CV_TYPE*,int*,int);   \
+        typedef size_t (* insert_sorted_by_val_mf)(CV_VECTOR_TYPE(CV_TYPE)*,const CV_TYPE,int*,int); \
+        typedef int (* remove_at_mf)(CV_VECTOR_TYPE(CV_TYPE)*,size_t);   \
+        typedef int (* remove_range_at_mf)(CV_VECTOR_TYPE(CV_TYPE)*,size_t,size_t);  \
+        typedef void (* cpy_mf)(CV_VECTOR_TYPE(CV_TYPE)*,const CV_VECTOR_TYPE(CV_TYPE)*); \
+        typedef void (* dbg_check_mf)(const CV_VECTOR_TYPE(CV_TYPE)*);  \
+        typedef void (* serialize_mf)(const CV_VECTOR_TYPE(CV_TYPE)*,cvh_serializer_t*);  \
+        typedef int (* deserialize_mf)(CV_VECTOR_TYPE(CV_TYPE)*,const cvh_serializer_t*);
+#   define CV_FAKE_MEMBER_FUNCTIONS_DEF_CHUNK1(CV_TYPE)  \
+        *((free_clear_shrink_to_fit_pop_back_mf*)&v->free)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_free);  \
+        *((free_clear_shrink_to_fit_pop_back_mf*)&v->clear)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_clear);    \
+        *((free_clear_shrink_to_fit_pop_back_mf*)&v->shrink_to_fit)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_shrink_to_fit);    \
+        *((swap_mf*)&v->swap)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_swap);   \
+        *((reserve_mf*)&v->reserve)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_reserve);  \
+        *((resize_mf*)&v->resize)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_resize); \
+        *((resize_with_mf*)&v->resize_with)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_resize_with);  \
+        *((resize_with_by_val_mf*)&v->resize_with_by_val)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_resize_with_by_val); \
+        *((push_back_mf*)&v->push_back)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_push_back);    \
+        *((push_back_by_val_mf*)&v->push_back_by_val)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_push_back_by_val);   \
+        *((free_clear_shrink_to_fit_pop_back_mf*)&v->pop_back)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_pop_back);  \
+        *((search_mf*)&v->linear_search)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_linear_search);   \
+        *((search_by_val_mf*)&v->linear_search_by_val)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_linear_search_by_val);  \
+        *((search_mf*)&v->binary_search)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_binary_search);   \
+        *((search_by_val_mf*)&v->binary_search_by_val)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_binary_search_by_val);  \
+        *((insert_at_mf*)&v->insert_at)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_insert_at);    \
+        *((insert_at_by_val_mf*)&v->insert_at_by_val)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_insert_at_by_val);   \
+        *((insert_range_at_mf*)&v->insert_range_at)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_insert_range_at);  \
+        *((insert_sorted_mf*)&v->insert_sorted)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_insert_sorted);    \
+        *((insert_sorted_by_val_mf*)&v->insert_sorted_by_val)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_insert_sorted_by_val);   \
+        *((remove_at_mf*)&v->remove_at)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_remove_at);    \
+        *((remove_range_at_mf*)&v->remove_range_at)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_remove_range_at);  \
+        *((cpy_mf*)&v->cpy)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_cpy);  \
+        *((dbg_check_mf*)&v->dbg_check)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_dbg_check);    \
+        *((serialize_mf*)&v->serialize)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_serialize); \
+        *((deserialize_mf*)&v->deserialize)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_deserialize);
+#   ifdef __cplusplus
+#       define CV_FAKE_MEMBER_FUNCTIONS_DEF_CPP_CHUNK(CV_TYPE)  \
+            ,free(&CV_VECTOR_TYPE_FCT(CV_TYPE,_free)),clear(&CV_VECTOR_TYPE_FCT(CV_TYPE,_clear)),shrink_to_fit(&CV_VECTOR_TYPE_FCT(CV_TYPE,_shrink_to_fit)), \
+            swap(&CV_VECTOR_TYPE_FCT(CV_TYPE,_swap)),reserve(&CV_VECTOR_TYPE_FCT(CV_TYPE,_reserve)),    \
+            resize(&CV_VECTOR_TYPE_FCT(CV_TYPE,_resize)),resize_with(&CV_VECTOR_TYPE_FCT(CV_TYPE,_resize_with)),resize_with_by_val(&CV_VECTOR_TYPE_FCT(CV_TYPE,_resize_with_by_val)),   \
+            push_back(&CV_VECTOR_TYPE_FCT(CV_TYPE,_push_back)),push_back_by_val(&CV_VECTOR_TYPE_FCT(CV_TYPE,_push_back_by_val)),pop_back(&CV_VECTOR_TYPE_FCT(CV_TYPE,_pop_back)),   \
+            linear_search(&CV_VECTOR_TYPE_FCT(CV_TYPE,_linear_search)),linear_search_by_val(&CV_VECTOR_TYPE_FCT(CV_TYPE,_linear_search_by_val)),    \
+            binary_search(&CV_VECTOR_TYPE_FCT(CV_TYPE,_binary_search)),binary_search_by_val(&CV_VECTOR_TYPE_FCT(CV_TYPE,_binary_search_by_val)),    \
+            insert_at(&CV_VECTOR_TYPE_FCT(CV_TYPE,_insert_at)),insert_at_by_val(&CV_VECTOR_TYPE_FCT(CV_TYPE,_insert_at_by_val)),    \
+            insert_range_at(&CV_VECTOR_TYPE_FCT(CV_TYPE,_insert_range_at)), \
+            insert_sorted(&CV_VECTOR_TYPE_FCT(CV_TYPE,_insert_sorted)),insert_sorted_by_val(&CV_VECTOR_TYPE_FCT(CV_TYPE,_insert_sorted_by_val)),    \
+            remove_at(&CV_VECTOR_TYPE_FCT(CV_TYPE,_remove_at)),remove_range_at(&CV_VECTOR_TYPE_FCT(CV_TYPE,_remove_range_at)),  \
+            cpy(&CV_VECTOR_TYPE_FCT(CV_TYPE,_cpy)),dbg_check(&CV_VECTOR_TYPE_FCT(CV_TYPE,_dbg_check)),  \
+            serialize(&CV_VECTOR_TYPE_FCT(CV_TYPE,_serialize)),deserialize(&CV_VECTOR_TYPE_FCT(CV_TYPE,_deserialize))
+#   else /*__cplusplus*/
+#       define CV_FAKE_MEMBER_FUNCTIONS_DEF_CPP_CHUNK(CV_TYPE)  /*no-op*/
+#   endif /*__cplusplus*/
+#else /*CV_DISABLE_FAKE_MEMBER_FUNCTIONS*/
+#   define CV_FAKE_MEMBER_FUNCTIONS_DEF_CHUNK0(CV_TYPE)  /*no-op*/
+#   define CV_FAKE_MEMBER_FUNCTIONS_DEF_CHUNK1(CV_TYPE)  /*no-op*/
+#   define CV_FAKE_MEMBER_FUNCTIONS_DEF_CPP_CHUNK(CV_TYPE)  /*no-op*/
+#endif /*CV_DISABLE_FAKE_MEMBER_FUNCTIONS*/
+
+
 #ifdef __cplusplus
 #   define CV_CPP_DEFINITION_CHUNK0(CV_TYPE)    \
         CV_VECTOR_TYPE(CV_TYPE)::CV_VECTOR_TYPE(CV_TYPE)() :  \
             v(NULL),size(0),capacity(0),    \
-            item_ctr(NULL),item_dtr(NULL),item_cpy(NULL),item_cmp(NULL),    \
-            free(&CV_VECTOR_TYPE_FCT(CV_TYPE,_free)),clear(&CV_VECTOR_TYPE_FCT(CV_TYPE,_clear)),shrink_to_fit(&CV_VECTOR_TYPE_FCT(CV_TYPE,_shrink_to_fit)), \
-            swap(&CV_VECTOR_TYPE_FCT(CV_TYPE,_swap)),reserve(&CV_VECTOR_TYPE_FCT(CV_TYPE,_reserve)),    \
-            resize(&CV_VECTOR_TYPE_FCT(CV_TYPE,_resize)),resize_with(&CV_VECTOR_TYPE_FCT(CV_TYPE,_resize_with)),resize_with_by_val(&CV_VECTOR_TYPE_FCT(CV_TYPE,_resize_with_by_val)),   \
-            push_back(&CV_VECTOR_TYPE_FCT(CV_TYPE,_push_back)),push_back_by_val(&CV_VECTOR_TYPE_FCT(CV_TYPE,_push_back_by_val)),pop_back(&CV_VECTOR_TYPE_FCT(CV_TYPE,_pop_back)),   \
-            linear_search(&CV_VECTOR_TYPE_FCT(CV_TYPE,_linear_search)),linear_search_by_val(&CV_VECTOR_TYPE_FCT(CV_TYPE,_linear_search_by_val)),    \
-            binary_search(&CV_VECTOR_TYPE_FCT(CV_TYPE,_binary_search)),binary_search_by_val(&CV_VECTOR_TYPE_FCT(CV_TYPE,_binary_search_by_val)),    \
-            insert_at(&CV_VECTOR_TYPE_FCT(CV_TYPE,_insert_at)),insert_at_by_val(&CV_VECTOR_TYPE_FCT(CV_TYPE,_insert_at_by_val)),    \
-            insert_range_at(&CV_VECTOR_TYPE_FCT(CV_TYPE,_insert_range_at)), \
-            insert_sorted(&CV_VECTOR_TYPE_FCT(CV_TYPE,_insert_sorted)),insert_sorted_by_val(&CV_VECTOR_TYPE_FCT(CV_TYPE,_insert_sorted_by_val)),    \
-            remove_at(&CV_VECTOR_TYPE_FCT(CV_TYPE,_remove_at)),remove_range_at(&CV_VECTOR_TYPE_FCT(CV_TYPE,_remove_range_at)),  \
-            cpy(&CV_VECTOR_TYPE_FCT(CV_TYPE,_cpy)),dbg_check(&CV_VECTOR_TYPE_FCT(CV_TYPE,_dbg_check))   \
+            item_ctr(NULL),item_dtr(NULL),item_cpy(NULL),item_cmp(NULL),item_serialize(NULL),item_deserialize(NULL)    \
+            CV_FAKE_MEMBER_FUNCTIONS_DEF_CPP_CHUNK(CV_TYPE)   \
         {}  \
             \
         CV_VECTOR_TYPE(CV_TYPE)::CV_VECTOR_TYPE(CV_TYPE)(const CV_VECTOR_TYPE(CV_TYPE)& o) :   \
             v(NULL),size(0),capacity(0),    \
-            item_ctr(o.item_ctr),item_dtr(o.item_dtr),item_cpy(o.item_cpy),item_cmp(o.item_cmp),    \
-            free(&CV_VECTOR_TYPE_FCT(CV_TYPE,_free)),clear(&CV_VECTOR_TYPE_FCT(CV_TYPE,_clear)),shrink_to_fit(&CV_VECTOR_TYPE_FCT(CV_TYPE,_shrink_to_fit)), \
-            swap(&CV_VECTOR_TYPE_FCT(CV_TYPE,_swap)),reserve(&CV_VECTOR_TYPE_FCT(CV_TYPE,_reserve)),    \
-            resize(&CV_VECTOR_TYPE_FCT(CV_TYPE,_resize)),resize_with(&CV_VECTOR_TYPE_FCT(CV_TYPE,_resize_with)),resize_with_by_val(&CV_VECTOR_TYPE_FCT(CV_TYPE,_resize_with_by_val)),   \
-            push_back(&CV_VECTOR_TYPE_FCT(CV_TYPE,_push_back)),push_back_by_val(&CV_VECTOR_TYPE_FCT(CV_TYPE,_push_back_by_val)),pop_back(&CV_VECTOR_TYPE_FCT(CV_TYPE,_pop_back)),   \
-            linear_search(&CV_VECTOR_TYPE_FCT(CV_TYPE,_linear_search)),linear_search_by_val(&CV_VECTOR_TYPE_FCT(CV_TYPE,_linear_search_by_val)),    \
-            binary_search(&CV_VECTOR_TYPE_FCT(CV_TYPE,_binary_search)),binary_search_by_val(&CV_VECTOR_TYPE_FCT(CV_TYPE,_binary_search_by_val)),    \
-            insert_at(&CV_VECTOR_TYPE_FCT(CV_TYPE,_insert_at)),insert_at_by_val(&CV_VECTOR_TYPE_FCT(CV_TYPE,_insert_at_by_val)),    \
-            insert_range_at(&CV_VECTOR_TYPE_FCT(CV_TYPE,_insert_range_at)), \
-            insert_sorted(&CV_VECTOR_TYPE_FCT(CV_TYPE,_insert_sorted)),insert_sorted_by_val(&CV_VECTOR_TYPE_FCT(CV_TYPE,_insert_sorted_by_val)),    \
-            remove_at(&CV_VECTOR_TYPE_FCT(CV_TYPE,_remove_at)),remove_range_at(&CV_VECTOR_TYPE_FCT(CV_TYPE,_remove_range_at)),  \
-            cpy(&CV_VECTOR_TYPE_FCT(CV_TYPE,_cpy)),dbg_check(&CV_VECTOR_TYPE_FCT(CV_TYPE,_dbg_check))   \
+            item_ctr(o.item_ctr),item_dtr(o.item_dtr),item_cpy(o.item_cpy),item_cmp(o.item_cmp),item_serialize(o.item_serialize),item_deserialize(o.item_deserialize)    \
+            CV_FAKE_MEMBER_FUNCTIONS_DEF_CPP_CHUNK(CV_TYPE)   \
         {   \
             CV_VECTOR_TYPE_FCT(CV_TYPE,_cpy)(this,&o);  \
         }   \
@@ -510,18 +790,8 @@ CV_API void cv_display_bytes(size_t bytes_in)   {
 #           define CV_CPP_DEFINITION_CHUNK1(CV_TYPE)    \
                 CV_VECTOR_TYPE(CV_TYPE)::CV_VECTOR_TYPE(CV_TYPE)(CV_VECTOR_TYPE(CV_TYPE)&& o) :    \
                     v(o.v),size(o.size),capacity(o.capacity),   \
-                    item_ctr(o.item_ctr),item_dtr(o.item_dtr),item_cpy(o.item_cpy),item_cmp(o.item_cmp),    \
-                    free(&CV_VECTOR_TYPE_FCT(CV_TYPE,_free)),clear(&CV_VECTOR_TYPE_FCT(CV_TYPE,_clear)),shrink_to_fit(&CV_VECTOR_TYPE_FCT(CV_TYPE,_shrink_to_fit)), \
-                    swap(&CV_VECTOR_TYPE_FCT(CV_TYPE,_swap)),reserve(&CV_VECTOR_TYPE_FCT(CV_TYPE,_reserve)),    \
-                    resize(&CV_VECTOR_TYPE_FCT(CV_TYPE,_resize)),resize_with(&CV_VECTOR_TYPE_FCT(CV_TYPE,_resize_with)),resize_with_by_val(&CV_VECTOR_TYPE_FCT(CV_TYPE,_resize_with_by_val)),   \
-                    push_back(&CV_VECTOR_TYPE_FCT(CV_TYPE,_push_back)),push_back_by_val(&CV_VECTOR_TYPE_FCT(CV_TYPE,_push_back_by_val)),pop_back(&CV_VECTOR_TYPE_FCT(CV_TYPE,_pop_back)),   \
-                    linear_search(&CV_VECTOR_TYPE_FCT(CV_TYPE,_linear_search)),linear_search_by_val(&CV_VECTOR_TYPE_FCT(CV_TYPE,_linear_search_by_val)),    \
-                    binary_search(&CV_VECTOR_TYPE_FCT(CV_TYPE,_binary_search)),binary_search_by_val(&CV_VECTOR_TYPE_FCT(CV_TYPE,_binary_search_by_val)),    \
-                    insert_at(&CV_VECTOR_TYPE_FCT(CV_TYPE,_insert_at)),insert_at_by_val(&CV_VECTOR_TYPE_FCT(CV_TYPE,_insert_at_by_val)),    \
-                    insert_range_at(&CV_VECTOR_TYPE_FCT(CV_TYPE,_insert_range_at)), \
-                    insert_sorted(&CV_VECTOR_TYPE_FCT(CV_TYPE,_insert_sorted)),insert_sorted_by_val(&CV_VECTOR_TYPE_FCT(CV_TYPE,_insert_sorted_by_val)),    \
-                    remove_at(&CV_VECTOR_TYPE_FCT(CV_TYPE,_remove_at)),remove_range_at(&CV_VECTOR_TYPE_FCT(CV_TYPE,_remove_range_at)),  \
-                    cpy(&CV_VECTOR_TYPE_FCT(CV_TYPE,_cpy)),dbg_check(&CV_VECTOR_TYPE_FCT(CV_TYPE,_dbg_check))   \
+                    item_ctr(o.item_ctr),item_dtr(o.item_dtr),item_cpy(o.item_cpy),item_cmp(o.item_cmp),item_serialize(o.item_serialize),item_deserialize(o.item_deserialize)    \
+                    CV_FAKE_MEMBER_FUNCTIONS_DEF_CPP_CHUNK(CV_TYPE)   \
                 {   \
                     o.v=NULL;*((size_t*)&o.size)=0;*((size_t*)&o.capacity)=0;   \
                 }   \
@@ -562,6 +832,7 @@ CV_API void cv_display_bytes(size_t bytes_in)   {
 #   define CV_CLEARING_ITEM_MEMORY_CHUNK3(CV_TYPE)   /*no-op*/
 #   define CV_CLEARING_ITEM_MEMORY_CHUNK4(CV_TYPE)   /*no-op*/
 #endif /*CV_DISABLE_CLEARING_ITEM_MEMORY*/
+
 
 
 #define CV_DEFINE(CV_TYPE)	\
@@ -837,6 +1108,8 @@ CV_API_DEF void CV_VECTOR_TYPE_FCT(CV_TYPE,_cpy)(CV_VECTOR_TYPE(CV_TYPE)* a,cons
     typedef void (*item_ctr_dtr_type)(CV_TYPE*);    \
     typedef void (*item_cpy_type)(CV_TYPE*,const CV_TYPE*); \
     typedef int (*item_cmp_type)(const CV_CMP_TYPE(CV_TYPE)*,const CV_CMP_TYPE(CV_TYPE)*);    \
+    typedef void (*item_serialize_type)(const CV_TYPE*,cvh_serializer_t*); \
+    typedef int (*item_deserialize_type)(CV_TYPE*,const cvh_serializer_t*); \
     if (a==b) return;   \
     CV_ASSERT(a && b);  \
     /* bad init asserts */  \
@@ -850,6 +1123,8 @@ CV_API_DEF void CV_VECTOR_TYPE_FCT(CV_TYPE,_cpy)(CV_VECTOR_TYPE(CV_TYPE)* a,cons
     *((item_ctr_dtr_type*)&a->item_dtr)=b->item_dtr;    \
     *((item_cpy_type*)&a->item_cpy)=b->item_cpy;    \
     *((item_cmp_type*)&a->item_cmp)=b->item_cmp;    \
+    *((item_serialize_type*)&a->item_serialize)=b->item_serialize;   \
+    *((item_deserialize_type*)&a->item_deserialize)=b->item_deserialize;   \
     CV_VECTOR_TYPE_FCT(CV_TYPE,_resize)(a,b->size); \
     CV_ASSERT(a->v && a->size==b->size);    \
     if (!a->item_cpy)   {CV_MEMCPY(&a->v[0],&b->v[0],a->size*sizeof(CV_TYPE));}    \
@@ -888,64 +1163,59 @@ CV_API_DEF void CV_VECTOR_TYPE_FCT(CV_TYPE,_dbg_check)(const CV_VECTOR_TYPE(CV_T
     CV_CHUNK_NO_STDIO_1(CV_TYPE)    \
     /*CV_ASSERT(num_sorting_errors==0);*/ /* When this happens, it can be a wrong user 'itemKey_cmp' function (that cannot sort keys in a consistent way) */    \
 }   \
+CV_API_DEF void CV_VECTOR_TYPE_FCT(CV_TYPE,_serialize)(const CV_VECTOR_TYPE(CV_TYPE)* v,cvh_serializer_t* serializer)  {    \
+    const size_t size_t_size_in_bytes = sizeof(size_t); \
+    const size_t v_size_in_bytes = v->size*sizeof(CV_TYPE);   \
+    CV_ASSERT(v && serializer);  \
+    cvh_serializer_reserve(serializer,serializer->size + size_t_size_in_bytes+v_size_in_bytes); /* space reserved for both v->size (size_t_size_in_bytes) and all the itams (v_size_in_bytes) */  \
+    *((size_t*) (&serializer->v[serializer->size])) = v->size;serializer->size+=size_t_size_in_bytes; /* v->size written, now the items: */   \
+    if (v->item_serialize)  {size_t i;for(i=0;i<v->size;i++) v->item_serialize(&v->v[i],serializer);} /* serializer->size is incremented by 'v->item_serialize' */ \
+    else {CV_MEMCPY(&serializer->v[serializer->size],(const unsigned char*) &v->v[0],v_size_in_bytes);serializer->size+=v_size_in_bytes;} /* serializer->size must be incremented */ \
+}   \
+CV_API_DEF int CV_VECTOR_TYPE_FCT(CV_TYPE,_deserialize)(CV_VECTOR_TYPE(CV_TYPE)* v,const cvh_serializer_t* deserializer)  {    \
+    /* We must start deserialization from the 'mutable' reader offset: 'deserializer->offset', and then increment it step by step */    \
+    const size_t size_t_size_in_bytes = sizeof(size_t); \
+    size_t vsize;int check;   \
+    CV_ASSERT(v && deserializer);  \
+    check = (deserializer->offset+size_t_size_in_bytes<=deserializer->size);    \
+    CV_ASSERT(check);  /* otherwise deserialization will fail */ \
+    if (!check) return 0; /* but when we compile with NDEBUG, or CV_NO_ASSERT, the caller must be notified of the failure */  \
+    vsize = *((size_t*) &deserializer->v[deserializer->offset]);*((size_t*) &deserializer->offset)+=size_t_size_in_bytes; /* 'vsize' read, 'deserializer->offset' incremented */ \
+    CV_VECTOR_TYPE_FCT(CV_TYPE,_resize)(v,vsize);/*CV_ASSERT(v->size==vsize);*/ /* now that 'v->size==vsize', we can start deserializing items: */   \
+    CV_ASSERT(v->v);\
+    if (v->item_deserialize)  {size_t i;for(i=0;i<vsize;i++) {if (!v->item_deserialize(&v->v[i],deserializer)) return 0;}} /* 'deserializer->offset' is incremented by 'v->item_deserialize' */ \
+    else {  \
+        size_t v_size_in_bytes = vsize*sizeof(CV_TYPE);   \
+        check = deserializer->offset+v_size_in_bytes<=deserializer->size;   \
+        CV_ASSERT(check);  /* otherwise deserialization will fail */   \
+        if (!check) return 0;\
+        CV_MEMCPY(v->v,&deserializer->v[deserializer->offset],v_size_in_bytes); \
+        *((size_t*) &deserializer->offset)+=v_size_in_bytes; /* 'deserializer->offset' must be incremented */ \
+    } \
+    return 1; /* we must return 1 on success */  \
+}   \
     \
     \
 /* create methods */    \
-CV_API_DEF void CV_VECTOR_TYPE_FCT(CV_TYPE,_create_with)(CV_VECTOR_TYPE(CV_TYPE)* v,int (*item_cmp)(const CV_CMP_TYPE(CV_TYPE)*,const CV_CMP_TYPE(CV_TYPE)*),void (*item_ctr)(CV_TYPE*),void (*item_dtr)(CV_TYPE*),void (*item_cpy)(CV_TYPE*,const CV_TYPE*))	{   \
+CV_API_DEF void CV_VECTOR_TYPE_FCT(CV_TYPE,_create_with)(CV_VECTOR_TYPE(CV_TYPE)* v,int (*item_cmp)(const CV_CMP_TYPE(CV_TYPE)*,const CV_CMP_TYPE(CV_TYPE)*),void (*item_ctr)(CV_TYPE*),void (*item_dtr)(CV_TYPE*),void (*item_cpy)(CV_TYPE*,const CV_TYPE*)    \
+                                                        ,void (*item_serialize)(const CV_TYPE*,cvh_serializer_t*),int (*item_deserialize)(CV_TYPE*,const cvh_serializer_t*))	{   \
     typedef void (*item_ctr_dtr_type)(CV_TYPE*);    \
     typedef void (*item_cpy_type)(CV_TYPE*,const CV_TYPE*); \
     typedef int (*item_cmp_type)(const CV_CMP_TYPE(CV_TYPE)*,const CV_CMP_TYPE(CV_TYPE)*);    \
-    typedef void (* free_clear_shrink_to_fit_pop_back_mf)(CV_VECTOR_TYPE(CV_TYPE)*); \
-    typedef void (* swap_mf)(CV_VECTOR_TYPE(CV_TYPE)*,CV_VECTOR_TYPE(CV_TYPE)*);  \
-    typedef void (* reserve_mf)(CV_VECTOR_TYPE(CV_TYPE)*,size_t);    \
-    typedef void (* resize_mf)(CV_VECTOR_TYPE(CV_TYPE)*,size_t); \
-    typedef void (* resize_with_mf)(CV_VECTOR_TYPE(CV_TYPE)*,size_t,const CV_TYPE*); \
-    typedef void (* resize_with_by_val_mf)(CV_VECTOR_TYPE(CV_TYPE)*,size_t,const CV_TYPE);   \
-    typedef void (* push_back_mf)(CV_VECTOR_TYPE(CV_TYPE)*,const CV_TYPE*);  \
-    typedef void (* push_back_by_val_mf)(CV_VECTOR_TYPE(CV_TYPE)*,const CV_TYPE);    \
-    typedef size_t (* search_mf)(const CV_VECTOR_TYPE(CV_TYPE)*,const CV_TYPE*,int*);    \
-    typedef size_t (* search_by_val_mf)(const CV_VECTOR_TYPE(CV_TYPE)*,const CV_TYPE,int*);  \
-    typedef size_t (* insert_at_mf)(CV_VECTOR_TYPE(CV_TYPE)*,const CV_TYPE*,size_t); \
-    typedef size_t (* insert_at_by_val_mf)(CV_VECTOR_TYPE(CV_TYPE)*,const CV_TYPE,size_t);   \
-    typedef size_t (* insert_range_at_mf)(CV_VECTOR_TYPE(CV_TYPE)*,const CV_TYPE*,size_t,size_t);    \
-    typedef size_t (* insert_sorted_mf)(CV_VECTOR_TYPE(CV_TYPE)*,const CV_TYPE*,int*,int);   \
-    typedef size_t (* insert_sorted_by_val_mf)(CV_VECTOR_TYPE(CV_TYPE)*,const CV_TYPE,int*,int); \
-    typedef int (* remove_at_mf)(CV_VECTOR_TYPE(CV_TYPE)*,size_t);   \
-    typedef int (* remove_range_at_mf)(CV_VECTOR_TYPE(CV_TYPE)*,size_t,size_t);  \
-    typedef void (* cpy_mf)(CV_VECTOR_TYPE(CV_TYPE)*,const CV_VECTOR_TYPE(CV_TYPE)*); \
-    typedef void (* dbg_check_mf)(const CV_VECTOR_TYPE(CV_TYPE)*);   \
+    typedef void (*item_serialize_type)(const CV_TYPE*,cvh_serializer_t*); \
+    typedef int (*item_deserialize_type)(CV_TYPE*,const cvh_serializer_t*); \
+    CV_FAKE_MEMBER_FUNCTIONS_DEF_CHUNK0(CV_TYPE)    \
     CV_ASSERT(v);   \
     CV_MEMSET(v,0,sizeof(CV_VECTOR_TYPE(CV_TYPE))); \
     *((item_ctr_dtr_type*)&v->item_ctr)=item_ctr;   \
     *((item_ctr_dtr_type*)&v->item_dtr)=item_dtr;   \
     *((item_cpy_type*)&v->item_cpy)=item_cpy;   \
     *((item_cmp_type*)&v->item_cmp)=item_cmp;   \
-    *((free_clear_shrink_to_fit_pop_back_mf*)&v->free)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_free);  \
-    *((free_clear_shrink_to_fit_pop_back_mf*)&v->clear)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_clear);    \
-    *((free_clear_shrink_to_fit_pop_back_mf*)&v->shrink_to_fit)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_shrink_to_fit);    \
-    *((swap_mf*)&v->swap)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_swap);   \
-    *((reserve_mf*)&v->reserve)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_reserve);  \
-    *((resize_mf*)&v->resize)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_resize); \
-    *((resize_with_mf*)&v->resize_with)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_resize_with);  \
-    *((resize_with_by_val_mf*)&v->resize_with_by_val)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_resize_with_by_val); \
-    *((push_back_mf*)&v->push_back)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_push_back);    \
-    *((push_back_by_val_mf*)&v->push_back_by_val)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_push_back_by_val);   \
-    *((free_clear_shrink_to_fit_pop_back_mf*)&v->pop_back)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_pop_back);  \
-    *((search_mf*)&v->linear_search)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_linear_search);   \
-    *((search_by_val_mf*)&v->linear_search_by_val)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_linear_search_by_val);  \
-    *((search_mf*)&v->binary_search)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_binary_search);   \
-    *((search_by_val_mf*)&v->binary_search_by_val)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_binary_search_by_val);  \
-    *((insert_at_mf*)&v->insert_at)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_insert_at);    \
-    *((insert_at_by_val_mf*)&v->insert_at_by_val)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_insert_at_by_val);   \
-    *((insert_range_at_mf*)&v->insert_range_at)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_insert_range_at);  \
-    *((insert_sorted_mf*)&v->insert_sorted)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_insert_sorted);    \
-    *((insert_sorted_by_val_mf*)&v->insert_sorted_by_val)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_insert_sorted_by_val);   \
-    *((remove_at_mf*)&v->remove_at)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_remove_at);    \
-    *((remove_range_at_mf*)&v->remove_range_at)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_remove_range_at);  \
-    *((cpy_mf*)&v->cpy)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_cpy);  \
-    *((dbg_check_mf*)&v->dbg_check)=&CV_VECTOR_TYPE_FCT(CV_TYPE,_dbg_check);    \
+    *((item_serialize_type*)&v->item_serialize)=item_serialize;   \
+    *((item_deserialize_type*)&v->item_deserialize)=item_deserialize;   \
+    CV_FAKE_MEMBER_FUNCTIONS_DEF_CHUNK1(CV_TYPE)   \
 }   \
-CV_API_DEF void CV_VECTOR_TYPE_FCT(CV_TYPE,_create)(CV_VECTOR_TYPE(CV_TYPE)* v,int (*item_cmp)(const CV_CMP_TYPE(CV_TYPE)*,const CV_CMP_TYPE(CV_TYPE)*))  {CV_VECTOR_TYPE_FCT(CV_TYPE,_create_with)(v,item_cmp,NULL,NULL,NULL);}   \
+CV_API_DEF void CV_VECTOR_TYPE_FCT(CV_TYPE,_create)(CV_VECTOR_TYPE(CV_TYPE)* v,int (*item_cmp)(const CV_CMP_TYPE(CV_TYPE)*,const CV_CMP_TYPE(CV_TYPE)*))  {CV_VECTOR_TYPE_FCT(CV_TYPE,_create_with)(v,item_cmp,NULL,NULL,NULL,NULL,NULL);}   \
     CV_CPP_DEFINITION_CHUNK0(CV_TYPE)   \
     CV_CPP_DEFINITION_CHUNK1(CV_TYPE)
 
