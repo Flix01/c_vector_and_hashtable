@@ -139,6 +139,7 @@ v[1] = {2:	[4,5]	};
 v[2] = {1:	[6]	};
 */
 
+/*#define CV_ENABLE_UNTESTED_FEATURES*/ /* optional: it simplifies 'item_serialization'/'item_deserialization' functions */
 /* The following line is completely optional, and must be used only
    if you need to silence some compiler or static analyzer warning.
    For further info, see: https://en.cppreference.com/w/c/string/byte/memcpy
@@ -328,6 +329,7 @@ static void string_cpy(string* a,const string* b)    {
 /* because our 'item struct' contains (directly or indirectly) pointers */
 /* and cannot be deep-copied with plain memcpy calls */
 static void string_serialize(const string* a,cvh_serializer_t* serializer)    {
+#   ifndef CV_ENABLE_UNTESTED_FEATURES
     /* we serialize strlen(*a)+1 [size_t], and then the string text [strlen(*a)+1 bytes, because we serialize '\0' too] */
     /* (note that we could just serialize the zero-terminated string without its length (or its length and the text without the trailing '\0')) */
     const size_t size_t_size_in_bytes = sizeof(size_t);
@@ -337,13 +339,16 @@ static void string_serialize(const string* a,cvh_serializer_t* serializer)    {
     *((size_t*) (&serializer->v[serializer->size])) = a_len_plus_one;serializer->size+=size_t_size_in_bytes; /* a_len_plus_one written, now the text: */
     if (*a) CV_MEMCPY(&serializer->v[serializer->size],(const unsigned char*)(*a),a_len_plus_one);  /* CV_MEMCPY(...) is the same as memcpy (but can be converted to memcpy_s in same cases) */
     serializer->size+=a_len_plus_one;
+#   else
     /* Tip: there are plenty of functions cvh_serializer_write_xxx(...) that can be used to simplify and shorten this code, */
     /* but they are untested and hide too much the serialization mechanism to be useful in this demo. */
     /* Use them at your own risk! (and if you do it, always check memory leaks with Valgrind or other similar tools). */
-    /* cvh_serializer_write_string(serializer,*a); */   /* this is supposed to be equivalent to all the code above */
+    cvh_serializer_write_string(serializer,*a,NULL);   /* this is supposed to be equivalent to all the code above */
     /* In version 1.14 all untested functions must be explicitely enabled with the CV_ENABLE_UNTESTED_FEATURES definition */
+#   endif
 }
 static int string_deserialize(string* a,const cvh_serializer_t* deserializer)    {
+#   ifndef CV_ENABLE_UNTESTED_FEATURES
     /* this is more difficult. Deserialization starts at the 'mutable' deserializer->offset (that must be incremented) */
     /* also we must return 0 on failure and 1 on success */
     /* also we now that the initial state of 'a' is valid, but its value is unknown. This means that: */
@@ -376,11 +381,13 @@ static int string_deserialize(string* a,const cvh_serializer_t* deserializer)   
         return 1;
     }
     return 1;
+#   else
     /* Tip: there are plenty of functions cvh_serializer_read_xxx(...) that can be used to simplify and shorten this code, */
     /* but they are untested and hide too much the deserialization mechanism to be useful in this demo */
     /* Use them at your own risk! (and if you do it, always check memory leaks with Valgrind or other similar tools). */
-    /* return cvh_serializer_read_string(deserializer,*a,&realloc,&free); */   /* this is supposed to be equivalent to all the code above */
+    return cvh_serializer_read_string(deserializer,a,&realloc,&free);   /* this is supposed to be equivalent to all the code above */
     /* In version 1.14 all untested functions must be explicitely enabled with the CV_ENABLE_UNTESTED_FEATURES definition */
+#   endif
 }
 
 
@@ -495,15 +502,23 @@ static void big_t_cpy(big_t* a,const big_t* b)    {
     cv_mystruct_cpy(&a->v,&b->v);   /* 'cv_mystruct_cpy(...)' has been created together with cv_mystruct in the first test */
 }
 static void big_t_serialize(const big_t* a,cvh_serializer_t* serializer)    {
+#   ifndef CV_ENABLE_UNTESTED_FEATURES
     const size_t size_of_float = sizeof(a->a);
     cvh_serializer_reserve(serializer,serializer->size + size_of_float); /* space reserved for serialization */
     *((float*) (&serializer->v[serializer->size])) = a->a;serializer->size+=size_of_float; /* a->a written */
+#   else
+    cvh_serializer_write_float(serializer,a->a);
+#   endif
     cv_mystruct_serialize(&a->v,serializer);
 }
 static int big_t_deserialize(big_t* a,const cvh_serializer_t* deserializer)    {
+#   ifndef CV_ENABLE_UNTESTED_FEATURES
     const size_t size_of_float = sizeof(a->a);
     int check = deserializer->offset+size_of_float<=deserializer->size;CV_ASSERT(check);if (!check) return 0;
     a->a = *((float*) &deserializer->v[deserializer->offset]);*((size_t*) &deserializer->offset)+=size_of_float;
+#   else
+    if (!cvh_serializer_read_float(deserializer,&a->a)) return 0;
+#   endif
     if (!cv_mystruct_deserialize(&a->v,deserializer)) return 0;
     return 1;
 }

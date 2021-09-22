@@ -55,12 +55,20 @@ freely, subject to the following restrictions:
 
 
 #ifndef C_VECTOR_VERSION
-#define C_VECTOR_VERSION        "1.14"
+#define C_VECTOR_VERSION        "1.14 rev2"
 #define C_VECTOR_VERSION_NUM    0114
 #endif
 
 
 /* HISTORY:
+   C_VECTOR_VERSION_NUM 114 rev3 TODO
+   -> remove cvh_serialization_write_xxx(...)/cvh_serialization_read_xxx(...) from CV_ENABLE_UNTESTED_FEATURES (should we remove 'manual' serialization in the demo?)
+   -> add an example the uses 'cvh_string_t', if CV_ENABLE_EXTRA_FEATURES is defined
+
+   C_VECTOR_VERSION_NUM 114 rev2
+   -> Fixed cvh_serialization_write_string(...)/cvh_serialization_read_string(...)
+   -> "c_vector_main.c": when CV_ENABLE_UNTESTED_FEATURES is defined, cvh_serialization_write_xxx(...)/cvh_serialization_read_xxx(...) are used.
+
    C_VECTOR_VERSION_NUM 114
    -> restored definition CV_DISABLE_FAKE_MEMBER_FUNCTIONS
    -> added serialization/deserialization support:
@@ -576,11 +584,10 @@ CV_API void cvh_serializer_write_string(cvh_serializer_t* s,const char* str_beg,
     if (!str_beg) cvh_serializer_write_size_t_using_mipmaps(s,0);   /* we want to preserve NULL strings */
     else {
         const size_t str_len = str_end ? (size_t)(str_end-str_beg) : strlen(str_beg);
-        const size_t str_len_plus_trailing_zero = str_beg[str_len]=='\0' ? str_len : str_len+1;
+        const size_t str_len_plus_trailing_zero = str_len+1;
         cvh_serializer_write_size_t_using_mipmaps(s,str_len_plus_trailing_zero);
         cvh_serializer_reserve(s,s->size + str_len_plus_trailing_zero);
-        CV_MEMCPY(&s->v[s->size],str_beg,str_len);
-        if (str_len_plus_trailing_zero>str_len) s->v[s->size+str_len]='\0';
+        CV_MEMCPY(&s->v[s->size],str_beg,str_len);s->v[s->size+str_len]='\0';
         s->size+=str_len_plus_trailing_zero;
     }
 }
@@ -590,7 +597,7 @@ CV_API int cvh_serializer_read_string(const cvh_serializer_t* d,char** pstr,void
     if (!cvh_serializer_read_size_t_using_mipmaps(d,&str_len_plus_one)) return 0;
     check=d->offset+str_len_plus_one<=d->size;CV_ASSERT(check);if (!check) return 0;
     if (str_len_plus_one==0)    {if (*pstr) {if (my_free) my_free(*pstr);else CV_FREE(*pstr);} return 1;}
-    CV_ASSERT(d->v[d->offset+str_len_plus_one-1]=='\0');
+    check = d->v[d->offset+str_len_plus_one-1]=='\0';CV_ASSERT(check); /* additional check (should we return 0?) */
     if (!(*pstr) || strlen(*pstr)<str_len_plus_one-1) {
         if (my_realloc) *pstr=(char*)my_realloc(*pstr,str_len_plus_one);
         else            *pstr=(char*)CV_REALLOC(*pstr,str_len_plus_one);
