@@ -1,4 +1,4 @@
-/*
+﻿/*
 // (plain C) compilation:
 // gcc
 gcc -O2 -no-pie -fno-pie -I"../include" c_vector_main.c -o c_vector_main
@@ -94,26 +94,40 @@ v[2]={	-100.000,	{[4:]	(20,3,-100),(20,333,-100),(333,333,-100),(333,333,333)}	}
 Removing element at 0 and then resizing to just one element:
 v[0]={	20.000,	{[2:]	(10,3,3),(20,3,3)}	}
 
-CPP MODE TEST:
-v0[0] = 0;
-v0[1] = 1;
-v0[2] = 2;
-v0[3] = 3;
-v0[4] = 4;
-v1[0] = 3;
-v1[1] = 4;
-v1[2] = 5;
-v1[3] = 6;
-cv_int_swap(&v1,&v0):
-v0[0] = 3;
-v0[1] = 4;
-v0[2] = 5;
-v0[3] = 6;
-v1[0] = 0;
-v1[1] = 1;
-v1[2] = 2;
-v1[3] = 3;
-v1[4] = 4;
+CVH_STRING_T TEST:
+v content:
+0) "Germany":
+    0) "Berlin"		population: 100000
+    1) "Munchen"		population: 50000
+    2) "Hamburg"		population: 20000
+    3) "Bonn"		population: 10000
+    4) "Frankfurt"		population: 40000
+1) "France":
+    0) "Paris"		population: 200000
+    1) "Marseille"		population: 100000
+    2) "Lyon"		population: 25000
+2) "Italy":
+    0) "Rome"		population: 50000
+    1) "Milan"		population: 20000
+    2) "Florence"		population: 15000
+    3) "Venice"		population: 25000
+After serialization and deserialization:
+v content:
+0) "Germany":
+    0) "Berlin"		population: 100000
+    1) "Munchen"		population: 50000
+    2) "Hamburg"		population: 20000
+    3) "Bonn"		population: 10000
+    4) "Frankfurt"		population: 40000
+1) "France":
+    0) "Paris"		population: 200000
+    1) "Marseille"		population: 100000
+    2) "Lyon"		population: 25000
+2) "Italy":
+    0) "Rome"		population: 50000
+    1) "Milan"		population: 20000
+    2) "Florence"		population: 15000
+    3) "Venice"		population: 25000
 
 ======= THIS OUTPUT IS PRESENT ONLY WHEN this file is compiled as c++: ======
 
@@ -139,7 +153,9 @@ v[1] = {2:	[4,5]	};
 v[2] = {1:	[6]	};
 */
 
-/*#define CV_ENABLE_UNTESTED_FEATURES*/ /* optional: it simplifies 'item_serialization'/'item_deserialization' functions */
+/*#define CV_ENABLE_CLEARING_ITEM_MEMORY */    /* just for testing */
+/*#define CV_DISABLE_FAKE_MEMBER_FUNCTIONS*/ /* just for testing */
+
 /* The following line is completely optional, and must be used only
    if you need to silence some compiler or static analyzer warning.
    For further info, see: https://en.cppreference.com/w/c/string/byte/memcpy
@@ -151,6 +167,7 @@ v[2] = {1:	[6]	};
 /*#define NO_SIMPLE_TEST*/
 /*#define NO_STRINGVECTOR_TEST*/
 /*#define NO_COMPLEXTEST*/
+/*#define NO_CVH_STRING_T_TEST*/
 /*#define NO_CPP_TEST*/
 
 #ifndef NO_SIMPLE_TEST
@@ -186,18 +203,18 @@ together with a lot of type-safe functions starting with 'cv_mystruct_'
 
 static void SimpleTest(void)   {
     cv_mystruct v;                  /* a.k.a. std::vector<mystruct> */
-    /* we skip C-style initialization, because we use 'cv_mystruct_create(...)' */
+    /* we skip initialization here, because we'll use 'cv_mystruct_init(...)' later */
 
     mystruct tmp = {-10,200,-5};	/* tmp item used later */
     size_t i,position;int match;
-    cvh_serializer_t serializer = CV_ZERO_INIT;    /* we'll use this at the end. CV_ZERO_INIT is MANDATORY! It's just {0} in C, and {} in C++ */
+    cvh_serializer_t serializer = cvh_serializer_create();    /* we'll use 'serializer' at the end. NEVER leave cv_xxx of cvh_xxx structs unizialized. Use create(...) or init(...) to initialize them */
 
     printf("VECTOR TEST:\n");
 
-    /* Note that we could just have initialized 'v' this way: 'cv_mystruct v={0};' but
-       by using 'cv_mystruct_create(...)' we enable the 'fake member function call syntax' */
-    cv_mystruct_create(&v,NULL);
-    /* With the 'fake member function call syntax', we can make fake member calls like:
+    /* Note that we could just have initialized 'v' this way: 'cv_mystruct v = cv_mystruct_create(NULL);' too.
+       Please never use cv_xxx and cvh_xxx structs unitialized */
+    cv_mystruct_init(&v,NULL);
+    /* After initialization, we can use the 'fake member function call syntax'. We can make fake member calls like:
        v.reserve(&v,4); // note that 'v' appears twice
        However in this demo we don't use this syntax (that can be removed by defining
        CV_DISABLE_FAKE_MEMBER_FUNCTIONS globally (= in the Project Options))
@@ -234,9 +251,9 @@ static void SimpleTest(void)   {
 
     printf("\nSORTED VECTOR TEST:\n");
 
-    /* 'cv_mystruct_create(...)' or 'cv_mystruct_create_with(...)' can be called only to replace the initializer list, or after 'cv_mystruct_free(...)' */
+    /* 'cv_mystruct_init(...)' or 'cv_mystruct_init_with(...)' can be called only after a variable declaration, or after 'cv_mystruct_free(...)' */
     /* we need it just because we must change 'v.item_cmp', which is const to prevent users from changing it on the fly and break sorting */
-    cv_mystruct_create(&v,&mystruct_cmp);    /* we can set 'mystruct_cmp' in its initialization list, or in 'cv_mystruct_create(...)' too */
+    cv_mystruct_init(&v,&mystruct_cmp);    /* initialization with an 'item_compare fuction' allows us to call: 'cv_mystruct_insert_sorted(...)', to keep the vector sorted (if we need it). */
 
     /* we add 5 items in a sorted way */
     tmp.a=200;cv_mystruct_insert_sorted(&v,&tmp,NULL,1);
@@ -260,8 +277,8 @@ static void SimpleTest(void)   {
     if (v.size>0) {
         const mystruct* pitem = &v.v[0];
         printf("re-inserting v[0]={\t%d,\t%d,\t%d};\n",v.v[0].a,v.v[0].b,v.v[0].c);
-        CV_ASSERT(v.v && pitem>=v.v && pitem<(v.v+v.size)); /* if a realloc happens, 'pitem' will be invalidated before we can copy it back in the vector, unless the code is robust enough to detect this border case */
-        cv_mystruct_insert_sorted(&v,pitem,NULL,1); /* of course we can just use '&v.v[itemIdx]' instead of 'pitem' here */
+        CV_ASSERT(v.v && pitem>=v.v && pitem<(v.v+v.size)); /* if a realloc happens, 'pitem' will be invalidated before we can copy it back into the vector, unless the code is robust enough to detect and handle this border case */
+        cv_mystruct_insert_sorted(&v,pitem,NULL,1); /* of course we can just use '&v.v[0]' instead of 'pitem' here */
     }
 
     /* display all items */
@@ -285,31 +302,32 @@ static void SimpleTest(void)   {
     we can use 'xxx_remove_at(...)' like above */
 
     printf("After serialization and deserialization:\n");
-    cv_mystruct_serialize(&v,&serializer);
+    cv_mystruct_serialize(&v,&serializer);  /* serializes 'v' into 'serializer' */
 
-/*#   define SERIALIZE_TO_FILE*/    /* just to show that's possible */
-#   ifdef SERIALIZE_TO_FILE
+/*#   define SERIALIZE_TO_FILE*/    /* just to show that's possible to save/load 'serializer' to/from file */
+#   ifdef SERIALIZE_TO_FILE    
     cvh_serializer_save(&serializer,"cv_mystruct.bin");
-    cvh_serializer_destroy(&serializer);    /* (optional) now it's empty */
+    cvh_serializer_free(&serializer);    /* (optional) now it's empty */
     cvh_serializer_load(&serializer,"cv_mystruct.bin");     /* now it's full */
 #   endif
 
-    cv_mystruct_free(&v);   /* (optional) now it's empty */
-    cv_mystruct_deserialize(&v,&serializer);    /* now it's full */
-    cvh_serializer_destroy(&serializer); /* mandatory */
+    cv_mystruct_free(&v);   /* (optional) now 'v' it's empty */
+    cv_mystruct_deserialize(&v,&serializer);    /* deserializes 'serializer' into 'v' */
+    cvh_serializer_free(&serializer); /* mandatory */
 
     /* display all items */
     for (i=0;i<v.size;i++) printf("v[%lu]={\t%d,\t%d,\t%d};\n",i,v.v[i].a,v.v[i].b,v.v[i].c);
 
     cv_mystruct_free(&v);	/* this is clear + free memory (note that it's ready to be reused (but then you must free it again at the end)) */
-                            /* also note that if you want to reuse it in an unsorted way, you must explicitely call: cv_mystruct_create(&v,NULL); after cv_mystruct_free(&v); */
+                            /* also note that if you want to reuse it in an unsorted way, you must explicitely call: cv_mystruct_init(&v,NULL); after cv_mystruct_free(&v); */
+                            /* IMPORTANT: please never call: v=cv_mystruct_create(...); or  cv_mystruct_init(&v,...); except: a) Soon after 'v' declaration. b) After cv_mystruct_free(&v); */
 
 }
 
 #endif /* NO_SIMPLE_TEST */
 
 #ifndef NO_STRINGVECTOR_TEST
-typedef char* string;   /* IMPORTANT: sometimes we MUST use a typedef (when using a pointer of a const qualifier for example) */
+typedef char* string;   /* IMPORTANT: sometimes we MUST use a typedef (when using a pointer or a const qualifier for example) */
 static int string_cmp(const string* a,const string* b) {
     if (*a==NULL) return (*b==NULL) ? 0 : 1;
     else if (*b==NULL) return 1;
@@ -326,10 +344,11 @@ static void string_cpy(string* a,const string* b)    {
     }
 }
 /* if we need to serialize/deserialize our vector we need these 2 functions */
-/* because our 'item struct' contains (directly or indirectly) pointers */
+/* because our 'item struct' (char*) contains (directly or indirectly) pointers */
 /* and cannot be deep-copied with plain memcpy calls */
+/*#define USE_LOW_LEVEL_SERIALIZATION */ /* very good exercise to understand how serialization works */
 static void string_serialize(const string* a,cvh_serializer_t* serializer)    {
-#   ifndef CV_ENABLE_UNTESTED_FEATURES
+#   ifdef USE_LOW_LEVEL_SERIALIZATION
     /* we serialize strlen(*a)+1 [size_t], and then the string text [strlen(*a)+1 bytes, because we serialize '\0' too] */
     /* (note that we could just serialize the zero-terminated string without its length (or its length and the text without the trailing '\0')) */
     const size_t size_t_size_in_bytes = sizeof(size_t);
@@ -343,16 +362,15 @@ static void string_serialize(const string* a,cvh_serializer_t* serializer)    {
     /* Tip: there are plenty of functions cvh_serializer_write_xxx(...) that can be used to simplify and shorten this code, */
     /* but they are untested and hide too much the serialization mechanism to be useful in this demo. */
     /* Use them at your own risk! (and if you do it, always check memory leaks with Valgrind or other similar tools). */
-    cvh_serializer_write_string(serializer,*a,NULL);   /* this is supposed to be equivalent to all the code above */
-    /* In version 1.14 all untested functions must be explicitely enabled with the CV_ENABLE_UNTESTED_FEATURES definition */
+    cvh_serializer_write_string(serializer,*a,NULL);   /* this is supposed to be a good alternative to all the low-level code above */
 #   endif
 }
 static int string_deserialize(string* a,const cvh_serializer_t* deserializer)    {
-#   ifndef CV_ENABLE_UNTESTED_FEATURES
+#   ifdef USE_LOW_LEVEL_SERIALIZATION
     /* this is more difficult. Deserialization starts at the 'mutable' deserializer->offset (that must be incremented) */
     /* also we must return 0 on failure and 1 on success */
     /* also we now that the initial state of 'a' is valid, but its value is unknown. This means that: */
-    /* -> first its memory was blanked (unless CV_DISABLE_CLEARING_ITEM_MEMORY is explicitly defined) */
+    /* -> if (CV_ENABLE_CLEARING_ITEM_MEMORY is defined) first its memory was blanked (not by default) */
     /* -> then 'item_ctr' (i.e. 'string_ctr' in our case) was called */
     /* -> then 'a' could be changed or not (possibly by 'item_cpy'), but for sure 'item_dtr' was not called */
     const size_t size_t_size_in_bytes = sizeof(size_t);
@@ -385,8 +403,7 @@ static int string_deserialize(string* a,const cvh_serializer_t* deserializer)   
     /* Tip: there are plenty of functions cvh_serializer_read_xxx(...) that can be used to simplify and shorten this code, */
     /* but they are untested and hide too much the deserialization mechanism to be useful in this demo */
     /* Use them at your own risk! (and if you do it, always check memory leaks with Valgrind or other similar tools). */
-    return cvh_serializer_read_string(deserializer,a,&realloc,&free);   /* this is supposed to be equivalent to all the code above */
-    /* In version 1.14 all untested functions must be explicitely enabled with the CV_ENABLE_UNTESTED_FEATURES definition */
+    return cvh_serializer_read_string(deserializer,a,&realloc,&free);   /* this is supposed to be a good alternative to all the code above */
 #   endif
 }
 
@@ -402,18 +419,17 @@ static void StringVectorTest(void) {
     cv_string s;    /* a.k.a. std::vector<string> */
 
     size_t i,position;int match=0;
-    cvh_serializer_t serializer = CV_ZERO_INIT;  /* mandatory initialization */
+    cvh_serializer_t serializer = cvh_serializer_create();  /* mandatory initialization */
 
     printf("\nSORTED STRINGVECTOR TEST:\n");
 
-    /* cv_string_create_with(...) is like cv_string_create(...) with additional params */
-    /* in our case we can simply replace '&string_ctr' with 'NULL', because new allocated memory is always cleared (to increase code robustness, unless CV_DISABLE_CLEARING_ITEM_MEMORY is explicitly defined) */
-    cv_string_create_with(&s,&string_cmp,&string_ctr,&string_dtr,&string_cpy,
+    /* cv_string_init_with(...) is like cv_string_init(...) with additional params */
+    cv_string_init_with(&s,&string_cmp,&string_ctr,&string_dtr,&string_cpy,
                           &string_serialize,&string_deserialize /* only necessary if we use cv_string_serialize(...)/cv_string_deserialize(...); otherwise we can set them to NULL */
                           );
 
     /* we add 5 items in a sorted way */
-    /* note that, by using the '_by_val' overloads, we can pass text strings directly.
+    /* note that, by using the '_by_val' overloads, we can pass text strings directly (char*, instead of char**).
        Also note that all the casts to '(string)' in the code below are there
        just to silence a compilation warning that appears ONLY when the code is
        compiled as C++ (=> you can safely remove them all in plain C).
@@ -462,13 +478,13 @@ static void StringVectorTest(void) {
 /*#   define SERIALIZE_TO_FILE*/    /* just to show that's possible */
 #   ifdef SERIALIZE_TO_FILE
     cvh_serializer_save(&serializer,"cv_string.bin");
-    cvh_serializer_destroy(&serializer);    /* (optional) now it's empty */
+    cvh_serializer_free(&serializer);    /* (optional) now it's empty */
     cvh_serializer_load(&serializer,"cv_string.bin");     /* now it's full */
 #   endif
 
     cv_string_free(&s);   /* (optional) now it's empty */
     cv_string_deserialize(&s,&serializer);    /* now it's full */
-    cvh_serializer_destroy(&serializer); /* mandatory */
+    cvh_serializer_free(&serializer); /* mandatory */
 
     /* display all items */
     for (i=0;i<s.size;i++) printf("s[%lu]=\"%s\";\n",i,s.v[i]?s.v[i]:"NULL");
@@ -492,7 +508,7 @@ typedef struct big_t {
    we need to specify ctr/dtr/cpy helpers: */
 static void big_t_ctr(big_t* a)    {
     a->a=0;
-    cv_mystruct_create(&a->v,NULL);  /* this can be thought as the 'cv_mystruct' ctr */
+    cv_mystruct_init(&a->v,NULL);  /* this can be thought as the 'cv_mystruct' ctr */
 }
 static void big_t_dtr(big_t* a)    {
     cv_mystruct_free(&a->v);    /* this can be thought as the 'cv_mystruct' dtr */
@@ -502,7 +518,7 @@ static void big_t_cpy(big_t* a,const big_t* b)    {
     cv_mystruct_cpy(&a->v,&b->v);   /* 'cv_mystruct_cpy(...)' has been created together with cv_mystruct in the first test */
 }
 static void big_t_serialize(const big_t* a,cvh_serializer_t* serializer)    {
-#   ifndef CV_ENABLE_UNTESTED_FEATURES
+#   ifdef USE_LOW_LEVEL_SERIALIZATION
     const size_t size_of_float = sizeof(a->a);
     cvh_serializer_reserve(serializer,serializer->size + size_of_float); /* space reserved for serialization */
     *((float*) (&serializer->v[serializer->size])) = a->a;serializer->size+=size_of_float; /* a->a written */
@@ -512,7 +528,7 @@ static void big_t_serialize(const big_t* a,cvh_serializer_t* serializer)    {
     cv_mystruct_serialize(&a->v,serializer);
 }
 static int big_t_deserialize(big_t* a,const cvh_serializer_t* deserializer)    {
-#   ifndef CV_ENABLE_UNTESTED_FEATURES
+#   ifdef USE_LOW_LEVEL_SERIALIZATION
     const size_t size_of_float = sizeof(a->a);
     int check = deserializer->offset+size_of_float<=deserializer->size;CV_ASSERT(check);if (!check) return 0;
     a->a = *((float*) &deserializer->v[deserializer->offset]);*((size_t*) &deserializer->offset)+=size_of_float;
@@ -530,14 +546,15 @@ CV_DECLARE_AND_DEFINE(big_t)
 static void ComplexTest(void) {
     cv_big_t v; /* a.k.a. std::vector<big_t> */
 
-    big_t tmp;
+    big_t tmp;  /* we could have used: 'big_t tmp = cv_big_t_create_with(&big_t_ctr,&big_t_dtr,&big_t_cpy,&big_t_serialize,&big_t_deserialize);', instead of 'cv_big_t_init_with(&v,...)' */
     mystruct ts = {1,2,3};  /* a tmp item for 'tmp.v' */
     size_t i,j;
-    cvh_serializer_t serializer = CV_ZERO_INIT;  /* mandatory zero initialization */
+    cvh_serializer_t serializer = cvh_serializer_create();  /* mandatory initialization (we could have used: cvh_serializer_init(&serializer); instead) */
 
     printf("\nCOMPLEX VECTOR TEST:\n");
 
-    cv_big_t_create_with(&v,NULL,&big_t_ctr,&big_t_dtr,&big_t_cpy,
+    /* first 'NULL' here is 'item_cmp', because we don't need sorted vector features ('xxx_insert_sorted' and 'xxx_binary_search') */
+    cv_big_t_init_with(&v,NULL,&big_t_ctr,&big_t_dtr,&big_t_cpy,
                          &big_t_serialize,&big_t_deserialize /* only necessary if we use cv_big_t_serialize(...)/cv_big_t_deserialize(...); otherwise we can set them to NULL */
                          );
 
@@ -580,12 +597,12 @@ static void ComplexTest(void) {
 /*#   define SERIALIZE_TO_FILE*/    /* just to show that's possible */
 #   ifdef SERIALIZE_TO_FILE
     cvh_serializer_save(&serializer,"cv_big_t.bin");
-    cvh_serializer_destroy(&serializer);    /* (optional) now it's empty */
+    cvh_serializer_free(&serializer);    /* (optional) now it's empty */
     cvh_serializer_load(&serializer,"cv_big_t.bin");     /* now it's full */
 #   endif
     cv_big_t_free(&v);   /* (optional) now it's empty */
     cv_big_t_deserialize(&v,&serializer);    /* now it's full */
-    cvh_serializer_destroy(&serializer); /* mandatory */
+    cvh_serializer_free(&serializer); /* mandatory */
     /* display elements */
     for (i=0;i<v.size;i++) {
         const big_t* b = &v.v[i];
@@ -624,6 +641,133 @@ static void ComplexTest(void) {
 #endif /* NO_COMPLEXTEST */
 
 
+#if (!defined(NO_CVH_STRING_T_TEST) && !defined(CV_NO_CVH_STRING_T))
+/* This test introduces the completely-optional 'cvh_string_t' struct. */
+/* It's a constant, grow-only string pool. Basically you store the 'size_t' returned by 'cvh_string_push_back(...)' */
+/* instead of a directly allocated char*. Why? Because 'size_t' is not a pointer. */
+/* For example, the struct 'city_t' could contain a 'char* name', */
+/* but replacing it with a 'size_t' now 'city_t' can be copied using plain memcpy calls, */
+/* and this saves us from the tedious task of defining many item_xxx functions for it */
+/* Note that there are a lot of limitations: 'cvh_string_t' can't remove items, for example. */
+/* The definition CV_NO_CVH_STRING_T can be used to remove 'cvh_string_t'. */
+typedef struct city_t {size_t name;unsigned population;} city_t;    /* this can be copied with memcpy! No additional functions needed */
+CV_DECLARE_AND_DEFINE(city_t)
+typedef struct country_t {size_t name;cv_city_t cities;cvh_string_t city_names;} country_t; /* this can't be copied with memcpy. Additional functions needed) */
+void country_ctr(country_t* p)  {    
+    p->name=0;
+    cv_city_t_init(&p->cities,NULL);
+    cvh_string_init(&p->city_names);
+}
+void country_dtr(country_t* p)  {
+    cv_city_t_free(&p->cities);
+    cvh_string_free(&p->city_names);
+}
+void country_cpy(country_t* a,const country_t* b)  {
+    a->name = b->name;
+    cv_city_t_cpy(&a->cities,&b->cities);
+    cvh_string_cpy(&a->city_names,&b->city_names);
+}
+void country_serialize(const country_t* p,cvh_serializer_t* s)  {
+    cvh_serializer_write_size_t(s,p->name);
+    cv_city_t_serialize(&p->cities,s);
+    cvh_string_serialize(&p->city_names,s);
+}
+int country_deserialize(country_t* p,const cvh_serializer_t* d)  {
+    if (!cvh_serializer_read_size_t(d,&p->name)) return 0;
+    if (!cv_city_t_deserialize(&p->cities,d)) return 0;
+    if (!cvh_string_deserialize(&p->city_names,d)) return 0;
+    return 1;
+}
+CV_DECLARE_AND_DEFINE(country_t)
+
+
+void CvhStringTTest(void)   {
+    cv_country_t v = cv_country_t_create_with(NULL,&country_ctr,&country_dtr,&country_cpy,&country_serialize,&country_deserialize); /* initialization is mandatory! */
+    cvh_string_t country_names = cvh_string_create();  /* initialization is mandatory! */
+    cvh_serializer_t serializer = cvh_serializer_create();
+    size_t i,j;
+
+    printf("\nCVH_STRING_T TEST:\n");
+
+    /* add countries */
+    {
+        country_t country; /* unitialized. Never use anything unitialized */
+        /*--- Germany----*/
+        country_ctr(&country);  /* initialized */
+        country.name = cvh_string_push_back(&country_names,"Germany",NULL);
+        /* add cities to 'c' (the population field is just a random positiove here) */
+        {city_t c = {cvh_string_push_back(&country.city_names,"Berlin",NULL),100000};cv_city_t_push_back(&country.cities,&c);}
+        {city_t c = {cvh_string_push_back(&country.city_names,"Munchen",NULL),50000};cv_city_t_push_back(&country.cities,&c);}
+        {city_t c = {cvh_string_push_back(&country.city_names,"Hamburg",NULL),20000};cv_city_t_push_back(&country.cities,&c);}
+        {city_t c = {cvh_string_push_back(&country.city_names,"Bonn",NULL),10000};cv_city_t_push_back(&country.cities,&c);}
+        {city_t c = {cvh_string_push_back(&country.city_names,"Frankfurt",NULL),40000};cv_city_t_push_back(&country.cities,&c);}
+        cv_country_t_push_back(&v,&country);
+        country_dtr(&country);  /* free */
+        /*---- France -----*/
+        country_ctr(&country);  /* initialized */
+        country.name = cvh_string_push_back(&country_names,"France",NULL);
+        /* add cities to 'c' (the population field is just a random positiove here) */
+        {city_t c = {cvh_string_push_back(&country.city_names,"Paris",NULL),200000};cv_city_t_push_back(&country.cities,&c);}
+        {city_t c = {cvh_string_push_back(&country.city_names,"Marseille",NULL),100000};cv_city_t_push_back(&country.cities,&c);}
+        {city_t c = {cvh_string_push_back(&country.city_names,"Lyon",NULL),25000};cv_city_t_push_back(&country.cities,&c);}
+        cv_country_t_push_back(&v,&country);
+        country_dtr(&country);  /* free */
+        /*---- Italy -----*/
+        country_ctr(&country);  /* initialized */
+        country.name = cvh_string_push_back(&country_names,"Italy",NULL);
+        /* add cities to 'c' (the population field is just a random positiove here) */
+        {city_t c = {cvh_string_push_back(&country.city_names,"Rome",NULL),50000};cv_city_t_push_back(&country.cities,&c);}
+        {city_t c = {cvh_string_push_back(&country.city_names,"Milan",NULL),20000};cv_city_t_push_back(&country.cities,&c);}
+        {city_t c = {cvh_string_push_back(&country.city_names,"Florence",NULL),15000};cv_city_t_push_back(&country.cities,&c);}
+        {city_t c = {cvh_string_push_back(&country.city_names,"Venice",NULL),25000};cv_city_t_push_back(&country.cities,&c);}
+        cv_country_t_push_back(&v,&country);
+        country_dtr(&country);  /* free */
+        /*-------------------------*/
+    }
+
+    /* display */
+    printf("v content:\n");
+    for (i=0;i<v.size;i++)  {
+        const country_t* country = &v.v[i];
+        printf("%lu) \"%s\":\n",i,&country_names.v[country->name]);
+        for (j=0;j<country->cities.size;j++)  {
+            const city_t* c = &country->cities.v[j];
+            printf("\t%lu) \"%s\"\t\tpopulation: %u\n",j,&country->city_names.v[c->name],c->population);
+        }
+    }
+
+    printf("After serialization and deserialization:\n");
+    /* serialize */
+    cv_country_t_serialize(&v,&serializer);
+    cvh_string_serialize(&country_names,&serializer);
+/*#   define SERIALIZE_TO_FILE*/    /* just to show that's possible */
+#   ifdef SERIALIZE_TO_FILE
+    cvh_serializer_save(&serializer,"cv_country_t.bin");
+    cvh_serializer_free(&serializer);    /* (optional) now it's empty */
+    cvh_serializer_load(&serializer,"cv_country_t.bin");     /* now it's full */
+#   endif
+    cv_country_t_free(&v);              /* (optional) now it's empty */
+    cvh_string_free(&country_names);    /* (optional) now it's empty */
+    /* deserialize */
+    cv_country_t_deserialize(&v,&serializer);               /* now it's full */
+    cvh_string_deserialize(&country_names,&serializer);    /* now it's full */
+    /* display */
+    printf("v content:\n");
+    for (i=0;i<v.size;i++)  {
+        const country_t* country = &v.v[i];
+        printf("%lu) \"%s\":\n",i,&country_names.v[country->name]);
+        for (j=0;j<country->cities.size;j++)  {
+            const city_t* c = &country->cities.v[j];
+            printf("\t%lu) \"%s\"\t\tpopulation: %u\n",j,&country->city_names.v[c->name],c->population);
+        }
+    }
+
+    cvh_serializer_free(&serializer);
+    cvh_string_free(&country_names);
+    cv_country_t_free(&v);
+}
+#endif /* (defined(NO_CVH_STRING_T_TEST) && !defined(CV_NO_CVH_STRING_T)) */
+
 
 #ifndef NO_CPP_TEST
 #ifdef __cplusplus
@@ -645,7 +789,7 @@ void CppTest(void)    {
        -> try to replace a single 'std::vector' with a 'cv_xxx', keep the code compilable (in C++) and repeat the process
        -> a std::vector<cv_xxx> is easier to setup than a cv_stdvector_type, so start with inner/nested std::vectors
        -> a cv_xxx that includes (directly or indirectly) a std::vector (or any other STL container) is a bit harder to make it work, so it's better to avoid it if possible
-       -> 'cv_xxx_create(...)' in C++ can be omitted (if we don't need 'item_ctr', 'item_dtr', 'item_cpy' or 'item_cmp')
+       -> 'cv_xxx_init(...)' or 'cv_xxx_create(...)' in C++ can be omitted (if we don't need 'item_ctr', 'item_dtr', 'item_cpy', 'item_cmp', etc.)
        -> in C++ we can use 'v[i]' (i.e. operator[]) (but it does not work in plain C, so we'll need to convert it later)
        -> cv_xxx::~cv_xxx() calls 'cv_xxx_free(...)' for us (but in plain C it's not available. It can be useful to remember that it's harmless to call 'cv_xxx_free(...)' multiple times)
        -> some programmers prefer using the 'fake member function' syntax when porting code from std::vector
@@ -658,7 +802,7 @@ void CppTest(void)    {
 
     printf("\nCPP MODE TEST:\n");
 
-    /* Note that in plain C, v0 and v1 are in a bad state (no initialization and no 'cv_int_create(...)' call); but in C++ it works */
+    /* Note that in plain C, v0 and v1 are in a bad state (no initialization and no 'cv_int_init(...)' or 'cv_int_create(...)' call); but in C++ it works */
 
     for (i=0;i<5;i++) cv_int_push_back(&v0,&tmp[i]); /* or v0.push_back(&v0,&tmp[i]) in the 'fake member function' syntax */
     cv_int_insert_range_at(&v1,&tmp[3],4,0);            /* or v1.insert_range_at(&v1,&tmp[3],4,0) in the 'fake member function' syntax */
@@ -705,7 +849,7 @@ void CppTest(void)    {
         printf("'cv_stdvector_int' test:\n");
 
         /* 'cpp_ctr','cpp_dtr' and 'cpp_cpy' are provided by 'c_vector.h' (in C++ mode only). */
-        cv_stdvector_int_create_with(&v,NULL,
+        cv_stdvector_int_init_with(&v,NULL,
                             &cpp_ctr,
                             &cpp_dtr,
                             &cpp_cpy,
@@ -746,6 +890,9 @@ int main(int argc,char* argv[])
 #ifndef NO_COMPLEXTEST
     ComplexTest();
 #endif /* NO_COMPLEXTEST */
+#if (!defined(NO_CVH_STRING_T_TEST) && !defined(CV_NO_CVH_STRING_T))
+    CvhStringTTest();
+#endif
 
 #ifndef NO_CPP_TEST
 #ifdef __cplusplus
