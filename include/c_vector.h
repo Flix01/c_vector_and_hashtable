@@ -54,12 +54,15 @@ freely, subject to the following restrictions:
 
 
 #ifndef C_VECTOR_VERSION
-#define C_VECTOR_VERSION        "1.15"
+#define C_VECTOR_VERSION        "1.15 rev2"
 #define C_VECTOR_VERSION_NUM    0115
 #endif
 
 
 /* HISTORY:
+   C_VECTOR_VERSION_NUM 115 rev2
+   -> fixed compilation with Visual C++ 7.1 2003 by removing two semicolons after macro calls.
+
    C_VECTOR_VERSION_NUM 115
    -> removed definition CV_ENABLE_UNTESTED_FEATURES, enabling everything by default (although it still lacks some testing).
    -> removed definitions CV_ENABLE_EXTRA_FEATURES.
@@ -450,7 +453,7 @@ typedef struct cvh_serializer_t {
 #define CV_DECLARE(CV_TYPE)										\
 typedef struct CV_VECTOR_TYPE(CV_TYPE) CV_VECTOR_TYPE(CV_TYPE);       \
 struct CV_VECTOR_TYPE(CV_TYPE) {         \
-	CV_TYPE * v;    \
+    CV_TYPE * v;    \
 	const size_t size;  \
 	const size_t capacity;  \
     void (*const item_ctr)(CV_TYPE*);                     /* optional (can be NULL) */  \
@@ -460,8 +463,8 @@ struct CV_VECTOR_TYPE(CV_TYPE) {         \
     void (*const item_serialize)(const CV_TYPE*,cvh_serializer_t*);   \
     int (*const item_deserialize)(CV_TYPE*,const cvh_serializer_t*);   \
     CV_FAKE_MEMBER_FUNCTIONS_DECL_CHUNK(CV_TYPE)    \
-    CV_CPP_DECLARATION_CHUNK0(CV_TYPE);  \
-    CV_CPP_DECLARATION_CHUNK1(CV_TYPE); \
+    CV_CPP_DECLARATION_CHUNK0(CV_TYPE)  \
+    CV_CPP_DECLARATION_CHUNK1(CV_TYPE)  \
 };  \
 /* function declarations */ \
 CV_API_DEC void CV_VECTOR_TYPE_FCT(CV_TYPE,_free)(CV_VECTOR_TYPE(CV_TYPE)* v);   \

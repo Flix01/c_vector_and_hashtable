@@ -6,7 +6,7 @@ gcc -O2 -no-pie -fno-pie -I"../include" c_vector_main.c -o c_vector_main
 clang -O2 -no-pie -fno-pie -I"../include" c_vector_main.c -o c_vector_main
 // mingw
 x86_64-w64-mingw32-gcc -mconsole -O2 -I"../include" c_vector_main.c -o c_vector_main.exe
-// cl.exe (from Visual C++ 7.1 2003) [last tested with 'c_vector_h' version 1.12]
+// cl.exe (from Visual C++ 7.1 2003) [last tested with 'c_vector_h' version 1.15 rev2]
 cl /O2 /MT /Tc c_vector_main.c /I"../include" /link /out:c_vector_main.exe user32.lib kernel32.lib
 */
 
@@ -18,7 +18,7 @@ gcc -O2 -x c++ -no-pie -fno-pie -I"../include" c_vector_main.c -o c_vector_main
 g++ -O2 -no-pie -fno-pie -I"../include" c_vector_main.c -o c_vector_main
 // clang and mingw are gcc based (try using clang++ and x86_64-w64-mingw32-g++)
 
-// cl.exe (from Visual C++ 7.1 2003) [last tested with 'c_vector_h' version 1.12]
+// cl.exe (from Visual C++ 7.1 2003) [last tested with 'c_vector_h' version 1.15 rev2]
 cl /O2 /MT /Tp c_vector_main.c /I"../include" /EHsc /link /out:c_vector_main_vc.exe user32.lib kernel32.lib
 */
 
