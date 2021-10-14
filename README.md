@@ -1,6 +1,6 @@
 ## [c_vector.h](https://github.com/Flix01/c_vector_and_hashtable/blob/master/include/c_vector.h)
 A type-safe implementation of std::vector in plain C. 
-It supports custom constructors/destructors/copy operators to perform complex operations (e.g. vectors of vectors).
+It supports custom constructors/destructors/copy operators to perform complex operations (e.g. vectors of vectors), and serialization/deserialization as well.
 Its test program is here [c_vector_main.c](https://github.com/Flix01/c_vector_and_hashtable/blob/master/examples/c_vector_main.c).
 
 ## [c_hashtable.h](https://github.com/Flix01/c_vector_and_hashtable/blob/master/include/c_hashtable.h)
