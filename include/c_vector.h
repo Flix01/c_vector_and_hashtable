@@ -30,11 +30,11 @@ freely, subject to the following restrictions:
    globally (= in the Project Options or in a StdAfx.h file):
 
    CV_DISABLE_FAKE_MEMBER_FUNCTIONS     // it disables "fake-member-function-syntax" (e.g. v.push_back(&v,item);). Use it to improve performance and reduce memory.
-   CV_ENABLE_CLEARING_ITEM_MEMORY      // enable it if you want that, before each item is constructed (and before the user-provided item_ctr function, if present, is called), the item memory is cleared to zero to increase code robustness (but it slows down performance).
+   CV_ENABLE_CLEARING_ITEM_MEMORY       // enable it if you want that, before each item is constructed (and before the user-provided item_ctr function, if present, is called), the item memory is cleared to zero to increase code robustness (but it slows down performance).
    CV_USE_VOID_PTRS_IN_CMP_FCT          // define this if you want to share vector item compare functions (when used) with c style functions like qsort. Basically you need to use const void* pointers as arguments.
    CV_FORCE_MEMCPY_S                    // it enforces the use of memcpy_s(...) and similar functions (but the standard and safer way is to define __STDC_WANT_LIB_EXT1__. Please see: https://en.cppreference.com/w/c/string/byte/memcpy).
    CV_NO_MEMCPY_S                       // it forces the use of memcpy(...) and similar functions, in cases where memcpy_s(...) is used by default (currently only Visual Studio 2005 (8.0) or newer).
-   CV_NO_CVH_STRING_T              // it disables the (undocumented, untested and probably useless) 'cvh_string_t' struct and functions.
+   CV_NO_CVH_STRING_T                   // it disables the 'cvh_string_t' struct and functions.
    CV_NO_PLACEMENT_NEW                  // (c++ mode only) it does not define helper stuff like: CV_PLACEMENT_NEW, cpp_ctr,cpp_dtr,cpp_cpy,cpp_cmp.
    CV_MALLOC
    CV_REALLOC
@@ -54,12 +54,17 @@ freely, subject to the following restrictions:
 
 
 #ifndef C_VECTOR_VERSION
-#define C_VECTOR_VERSION        "1.15 rev2"
+#define C_VECTOR_VERSION        "1.15 rev3"
 #define C_VECTOR_VERSION_NUM    0115
 #endif
 
 
 /* HISTORY:
+   C_VECTOR_VERSION_NUM 115 rev3
+   -> replaced a few "naked" asserts with CV_ASSERT.
+   -> added some additional guards in some parts of the code
+      (so that we can mix "c_vector.h" and "c_vector_type_unsafe.h" together... at least I hope so)
+
    C_VECTOR_VERSION_NUM 115 rev2
    -> fixed compilation with Visual C++ 7.1 2003 by removing two semicolons after macro calls.
 
@@ -337,6 +342,7 @@ freely, subject to the following restrictions:
 #endif
 
 
+#ifndef CVH_SRIALIZER_GUARD_
 /* cvh_serializer_t provides serialization/deserialization support for all the vector macros that follow */
 typedef struct cvh_serializer_t {
     unsigned char* v;
@@ -396,6 +402,7 @@ typedef struct cvh_serializer_t {
 #       endif /* CV_HAS_MOVE_SEMANTICS */
 #   endif /*__cplusplus*/
 } cvh_serializer_t;
+#endif /* CVH_SRIALIZER_GUARD_ */
 
 #ifdef __cplusplus
 #   define CV_CPP_DECLARATION_CHUNK0(CV_TYPE)    \
@@ -506,6 +513,7 @@ CV_API_DEC CV_VECTOR_TYPE(CV_TYPE) CV_VECTOR_TYPE_FCT(CV_TYPE,_create)(int (*ite
 #if (defined(CV_FORCE_MEMCPY_S) && defined(CV_NO_MEMCPY_S))
 #   error CV_FORCE_MEMCPY_S and CV_NO_MEMCPY_S cannot be both defined.
 #endif
+#ifndef CV_MEMCPY
 #if (!defined(CV_NO_MEMCPY_S) && (defined(__STDC_LIB_EXT1__) || defined(CV_FORCE_MEMCPY_S) || (defined(_MSC_VER) && _MSC_VER>=1400)))   /* 1400 == Visual Studio 8.0 2005 */
 #   define CV_MEMCPY(DST,SRC,SIZE)      memcpy_s((unsigned char*)DST,SIZE,(unsigned char*)SRC,SIZE)
 #   define CV_MEMMOVE(DST,SRC,SIZE)     memmove_s((unsigned char*)DST,SIZE,(unsigned char*)SRC,SIZE)
@@ -515,7 +523,7 @@ CV_API_DEC CV_VECTOR_TYPE(CV_TYPE) CV_VECTOR_TYPE_FCT(CV_TYPE,_create)(int (*ite
 #   define CV_MEMMOVE(DST,SRC,SIZE)     memmove((unsigned char*)DST,(unsigned char*)SRC,SIZE)
 #   define CV_MEMSET(DST,VALUE,SIZE)    memset((unsigned char*)DST,VALUE,SIZE)
 #endif
-
+#endif /*CV_MEMCPY */
 
 #ifndef CV_COMMON_FUNCTIONS_GUARD
 #define CV_COMMON_FUNCTIONS_GUARD
@@ -570,6 +578,7 @@ CV_API void cv_display_bytes(size_t bytes_in)   {
 #endif /* CV_NO_STDIO */
 
 /* cvh_serializer_t functions */
+#ifndef CVH_SRIALIZER_GUARD_
 CV_API void cvh_serializer_reserve(cvh_serializer_t* p,size_t new_capacity)    {
     if (new_capacity>p->capacity) {
         new_capacity = new_capacity<p->capacity*3/2 ? p->capacity*3/2 : new_capacity; /* grow factor */
@@ -579,7 +588,7 @@ CV_API void cvh_serializer_reserve(cvh_serializer_t* p,size_t new_capacity)    {
 }
 CV_API void cvh_serializer_free(cvh_serializer_t* p)    {cv_free(p->v);p->v=NULL;p->size=p->capacity=p->offset=0;}
 CV_API void cvh_serializer_cpy(cvh_serializer_t* dst,const cvh_serializer_t* src)   {
-    assert(src && dst);
+    CV_ASSERT(src && dst);
     if (dst->capacity<src->size) cvh_serializer_reserve(dst,src->size);
     CV_MEMCPY(dst->v,src->v,src->size);dst->size = src->size;/*dst->offset = src->offset;*/
 }
@@ -790,9 +799,14 @@ CV_API cvh_serializer_t cvh_serializer_create(void) {cvh_serializer_t p;cvh_seri
 #   endif /*__cplusplus*/
 #undef CV_SERIALIZER_MF_CHUNK0
 
+#define CVH_SRIALIZER_GUARD_
+#endif /* CVH_SRIALIZER_GUARD_ */
+
+
 #ifndef CV_NO_CVH_STRING_T
+#ifndef CVH_STRING_GUARD_
+#define CVH_STRING_GUARD_
 /* A constant, grow-only string pool. Basically you store the 'size_t' returned by 'cvh_string_push_back(...)' instead of a char* */
-/* Warning: deeply UNTESTED code */
 typedef struct cvh_string_t {
     char* v;size_t size,capacity;
 #   ifndef CV_DISABLE_FAKE_MEMBER_FUNCTIONS
@@ -819,13 +833,13 @@ typedef struct cvh_string_t {
 CV_API void cvh_string_reserve(cvh_string_t* p,size_t new_capacity)    {
     if (new_capacity>p->capacity) {
         new_capacity = new_capacity<p->capacity*3/2 ? p->capacity*3/2 : new_capacity; /* grow factor */
-        cv_safe_realloc((void**)&p->v,new_capacity);assert(p->v);
+        cv_safe_realloc((void**)&p->v,new_capacity);CV_ASSERT(p->v);
         p->capacity = new_capacity;
     }
 }
 CV_API size_t cvh_string_push_back(cvh_string_t* p,const char* str_beg,const char* str_end/*=NULL*/)    {
     const size_t old_size = p->size;size_t len;
-    assert(str_beg);
+    CV_ASSERT(str_beg);
     len = (!str_end) ? strlen(str_beg) : (size_t)(str_end-str_beg);
     cvh_string_reserve(p,p->size+len+1);
     CV_MEMCPY(&p->v[p->size],str_beg,len);
@@ -835,7 +849,7 @@ CV_API size_t cvh_string_push_back(cvh_string_t* p,const char* str_beg,const cha
 }
 CV_API void cvh_string_free(cvh_string_t* p)    {cv_free(p->v);p->v=NULL;p->size=p->capacity=0;}
 CV_API void cvh_string_cpy(cvh_string_t* dst,const cvh_string_t* src)   {
-    assert(src && dst);
+    CV_ASSERT(src && dst);
     if (dst->capacity<src->size) cvh_string_reserve(dst,src->size);
     CV_MEMCPY(dst->v,src->v,src->size);dst->size = src->size;
 }
@@ -852,10 +866,10 @@ CV_API void cvh_string_serialize(const cvh_string_t* p,cvh_serializer_t* s)    {
 CV_API int cvh_string_deserialize(cvh_string_t* p,const cvh_serializer_t* d)    {
     const size_t size_t_size_in_bytes = sizeof(size_t);size_t psize=0;
     int check = d->offset+size_t_size_in_bytes<=d->size;CV_ASSERT(check);if (!check) return 0;
-    assert(p && d);
+    CV_ASSERT(p && d);
     psize = *((const size_t*) &d->v[d->offset]);*((size_t*)&d->offset)+=size_t_size_in_bytes;
     check = d->offset+psize<=d->size;CV_ASSERT(check && "No space to deserialize the content of a cvh_string_t");if (!check) return 0;
-    cvh_string_reserve(p,psize);
+    cvh_string_reserve(p,psize);CV_ASSERT(p->v);
     CV_MEMCPY(p->v,&d->v[d->offset],psize);*((size_t*)&d->offset)+=psize;p->size=psize;
     return 1;
 }
@@ -906,7 +920,7 @@ CV_API cvh_string_t cvh_string_create(void)   {cvh_string_t v;cvh_string_init(&v
 #   endif /* CV_HAS_MOVE_SEMANTICS */
 #   undef CV_CPP_STRINGT_CHUNK0
 #endif /* __cplusplus */
-
+#endif /* CVH_STRING_GUARD_ */
 #endif /* CV_NO_CVH_STRING_T */
 
 #endif /* CV_COMMON_FUNCTIONS_GUARD */
@@ -1421,7 +1435,7 @@ CV_API_DEF void CV_VECTOR_TYPE_FCT(CV_TYPE,_serialize)(const CV_VECTOR_TYPE(CV_T
     if (v->item_serialize)  {size_t i;for(i=0;i<v->size;i++) v->item_serialize(&v->v[i],serializer);} /* serializer->size is incremented by 'v->item_serialize' */ \
     else {  \
         const size_t v_size_in_bytes = v->size*sizeof(CV_TYPE);   \
-        cvh_serializer_reserve(serializer,serializer->size + v_size_in_bytes); /* space reserved for all the itams (v_size_in_bytes) */  \
+        cvh_serializer_reserve(serializer,serializer->size + v_size_in_bytes); /* space reserved for all the items (v_size_in_bytes) */  \
         CV_ASSERT(serializer->v);   \
         CV_MEMCPY(&serializer->v[serializer->size],v->v,v_size_in_bytes);serializer->size+=v_size_in_bytes; /* serializer->size must be incremented */ \
     } \

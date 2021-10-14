@@ -8,6 +8,10 @@ clang -O2 -no-pie -fno-pie -I"../include" c_vector_main.c -o c_vector_main
 x86_64-w64-mingw32-gcc -mconsole -O2 -I"../include" c_vector_main.c -o c_vector_main.exe
 // cl.exe (from Visual C++ 7.1 2003) [last tested with 'c_vector_h' version 1.15 rev2]
 cl /O2 /MT /Tc c_vector_main.c /I"../include" /link /out:c_vector_main.exe user32.lib kernel32.lib
+// zig (embedded c compiler) (for linux)    Please see: https://andrewkelley.me/post/zig-cc-powerful-drop-in-replacement-gcc-clang.html
+zig cc -O2 -target x86_64-linux-gnu -I"../include" c_vector.c -o c_vector_main
+// zig (embedded c compiler) (for windows)
+zig cc -O2 -target x86_64-windows-gnu -I"../include" c_vector.c -o c_vector_main.exe
 */
 
 /*
@@ -20,6 +24,8 @@ g++ -O2 -no-pie -fno-pie -I"../include" c_vector_main.c -o c_vector_main
 
 // cl.exe (from Visual C++ 7.1 2003) [last tested with 'c_vector_h' version 1.15 rev2]
 cl /O2 /MT /Tp c_vector_main.c /I"../include" /EHsc /link /out:c_vector_main_vc.exe user32.lib kernel32.lib
+
+// zig should have the "zig c++" syntax for compiling c++ files. Please see: https://zig.news/kristoff/compile-a-c-c-project-with-zig-368j
 */
 
 /* Program Output:
@@ -207,7 +213,7 @@ static void SimpleTest(void)   {
 
     mystruct tmp = {-10,200,-5};	/* tmp item used later */
     size_t i,position;int match;
-    cvh_serializer_t serializer = cvh_serializer_create();    /* we'll use 'serializer' at the end. NEVER leave cv_xxx of cvh_xxx structs unizialized. Use create(...) or init(...) to initialize them */
+    cvh_serializer_t serializer = cvh_serializer_create();    /* we'll use 'serializer' at the end. NEVER leave cv_xxx of cvh_xxx structs unitialized. Use create(...) or init(...) to initialize them */
 
     printf("VECTOR TEST:\n");
 
@@ -361,7 +367,6 @@ static void string_serialize(const string* a,cvh_serializer_t* serializer)    {
 #   else
     /* Tip: there are plenty of functions cvh_serializer_write_xxx(...) that can be used to simplify and shorten this code, */
     /* but they are untested and hide too much the serialization mechanism to be useful in this demo. */
-    /* Use them at your own risk! (and if you do it, always check memory leaks with Valgrind or other similar tools). */
     cvh_serializer_write_string(serializer,*a,NULL);   /* this is supposed to be a good alternative to all the low-level code above */
 #   endif
 }
@@ -402,7 +407,6 @@ static int string_deserialize(string* a,const cvh_serializer_t* deserializer)   
 #   else
     /* Tip: there are plenty of functions cvh_serializer_read_xxx(...) that can be used to simplify and shorten this code, */
     /* but they are untested and hide too much the deserialization mechanism to be useful in this demo */
-    /* Use them at your own risk! (and if you do it, always check memory leaks with Valgrind or other similar tools). */
     return cvh_serializer_read_string(deserializer,a,&realloc,&free);   /* this is supposed to be a good alternative to all the code above */
 #   endif
 }
@@ -546,14 +550,14 @@ CV_DECLARE_AND_DEFINE(big_t)
 static void ComplexTest(void) {
     cv_big_t v; /* a.k.a. std::vector<big_t> */
 
-    big_t tmp;  /* we could have used: 'big_t tmp = cv_big_t_create_with(&big_t_ctr,&big_t_dtr,&big_t_cpy,&big_t_serialize,&big_t_deserialize);', instead of 'cv_big_t_init_with(&v,...)' */
-    mystruct ts = {1,2,3};  /* a tmp item for 'tmp.v' */
+    big_t tmp;      mystruct ts = {1,2,3};  /* a tmp item for 'tmp.v' */
     size_t i,j;
     cvh_serializer_t serializer = cvh_serializer_create();  /* mandatory initialization (we could have used: cvh_serializer_init(&serializer); instead) */
 
     printf("\nCOMPLEX VECTOR TEST:\n");
 
-    /* first 'NULL' here is 'item_cmp', because we don't need sorted vector features ('xxx_insert_sorted' and 'xxx_binary_search') */
+    /* Note that we could have used: 'cv_big_t v = cv_big_t_create_with(NULL,&big_t_ctr,&big_t_dtr,&big_t_cpy,&big_t_serialize,&big_t_deserialize);', instead of 'cv_big_t_init_with(&v,...)' */
+    /* First 'NULL' here is 'item_cmp', because we don't need sorted vector features ('xxx_insert_sorted' and 'xxx_binary_search') */
     cv_big_t_init_with(&v,NULL,&big_t_ctr,&big_t_dtr,&big_t_cpy,
                          &big_t_serialize,&big_t_deserialize /* only necessary if we use cv_big_t_serialize(...)/cv_big_t_deserialize(...); otherwise we can set them to NULL */
                          );
