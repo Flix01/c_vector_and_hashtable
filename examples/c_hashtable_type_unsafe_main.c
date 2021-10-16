@@ -184,6 +184,7 @@ static void SimpleTest(void)    {
             const mykey* key = &keys[j];
             const myvalue* val = &values[j];
             printf("%lu) ht[\t%d,\t%d,\t%d]\t=\t[\"%s\"].\n",k++,key->a,key->b,key->c,val?val->name:"NULL");
+            /* Please note that the correct formatting syntax for size_t is %zu, but it's C99 specific (and %llu too). So we use the %lu syntax */
         }
     }
     /* CH_NUM_USED_BUCKETS can be set globally, and it's equivalent to: */

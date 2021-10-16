@@ -56,10 +56,13 @@ freely, subject to the following restrictions:
 #ifndef C_VECTOR_TYPE_UNSAFE_H
 #define C_VECTOR_TYPE_UNSAFE_H
 
-#define C_VECTOR_TYPE_UNSAFE_VERSION            "1.09 rev2"
+#define C_VECTOR_TYPE_UNSAFE_VERSION            "1.09 rev3"
 #define C_VECTOR_TYPE_UNSAFE_VERSION_NUM        0109
 
 /* HISTORY
+   C_VECTOR_TYPE_UNSAFE_VERSION_NUM 109 rev2
+   -> -> added the CV_SIZE_T_FORMATTING definition (internal usage).
+
    C_VECTOR_TYPE_UNSAFE_VERSION_NUM 109 rev2
    -> Added CV_NO_CVH_SERIALIZER_T to remove the 'cvh_serializer_t' struct and functions, cvector_serialize(...)/cvector_deserialize(...) functions, cvh_string_serialize(...)/cvh_string_deserialize(...) functions.
    -> Added the CV_API_CPP_DEC and CV_API_CPP_DEF definition (used internally).
@@ -134,6 +137,17 @@ freely, subject to the following restrictions:
 #   undef CV_HAS_MOVE_SEMANTICS
 #   define CV_HAS_MOVE_SEMANTICS
 #endif
+
+#ifndef CV_SIZE_T_FORMATTING
+#   if ((defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L) || (defined(_MSC_VER) && _MSC_VER>1800))    /* 1800 -> Visual C++ 2013; 1900 ->  Visual C++ 2015 */
+       /* Problem: I'm not sure which Visual C++ version started supporting the C99 printf "%zu" (or at least "%llu") formatting syntax.
+          Visual C++ 2013 finally added support for various C99 features in its C mode (including designated initializers, compound literals, and the _Bool type), though it was still not complete.
+          Visual C++ 2015 further improved the C99 support, with full support of the C99 Standard Library, except for features that require C99 language features not yet supported by the compiler */
+#      define CV_SIZE_T_FORMATTING "zu"
+#   else
+#      define CV_SIZE_T_FORMATTING "lu"    /* C89 fallback (loses precision and there might be a compiler warning) */
+#   endif
+#endif /* CV_SIZE_T_FORMATTING */
 
 #if (defined (NDEBUG) || defined (_NDEBUG))
 #   undef CV_NO_ASSERT
@@ -299,7 +313,7 @@ CV_API void cv_display_bytes(size_t bytes_in)   {
     for (i=0;i<5;i++)   {
         if (pTGMKB[i]!=0) {
             if (cnt>0) printf(" ");
-            printf("%lu %s",pTGMKB[i],names[i]);
+            printf("%" CV_SIZE_T_FORMATTING " %s",pTGMKB[i],names[i]);
             ++cnt;
         }
     }
@@ -1185,7 +1199,7 @@ CV_API_DEF void cvector_cpy(cvector* a,const cvector* b) {
     /*CV_ASSERT(a->item_size_in_bytes==b->item_size_in_bytes);*/   /* can't cpy two different vectors! */
     /*if (a->item_size_in_bytes!=b->item_size_in_bytes)   {
 #       ifndef CV_NO_STDIO
-        fprintf(stderr,"[cvector_cpy] Error: two vector with different 'item_size_in_bytes' (%lu != %lu) can't be copied.\n",a->item_size_in_bytes,b->item_size_in_bytes);
+        fprintf(stderr,"[cvector_cpy] Error: two vector with different 'item_size_in_bytes' (%" CV_SIZE_T_FORMATTING " != %" CV_SIZE_T_FORMATTING ") can't be copied.\n",a->item_size_in_bytes,b->item_size_in_bytes);
 #       endif
         return;
     }*/
@@ -1232,7 +1246,7 @@ CV_API_DEF void cvector_dbg_check(const cvector* v)  {
                     /* When this happens, it can be a wrong user 'item_cmp' function (that cannot sort items in a consistent way) */                    
                     ++num_sorting_errors;
 #                   ifndef CV_NO_STDIO
-                    fprintf(stderr,"[cvector_dbg_check] Sorting Error (%lu): item_cmp(%lu,%lu)>0 [num_items=%lu]\n",num_sorting_errors,j-1,j,v->size);
+                    fprintf(stderr,"[cvector_dbg_check] Sorting Error (%" CV_SIZE_T_FORMATTING "): item_cmp(%" CV_SIZE_T_FORMATTING ",%" CV_SIZE_T_FORMATTING ")>0 [num_items=%" CV_SIZE_T_FORMATTING "]\n",num_sorting_errors,j-1,j,v->size);
 #                   endif
                 }
             }
@@ -1241,10 +1255,10 @@ CV_API_DEF void cvector_dbg_check(const cvector* v)  {
     }
 #   ifndef CV_NO_STDIO
     printf("[cvector_dbg_check]:\n");
-    printf("\tsize: %lu. capacity: %lu. sizeof(item): %lu\n",v->size,v->capacity,v->item_size_in_bytes);
+    printf("\tsize: %" CV_SIZE_T_FORMATTING ". capacity: %" CV_SIZE_T_FORMATTING ". sizeof(item): %" CV_SIZE_T_FORMATTING "\n",v->size,v->capacity,v->item_size_in_bytes);
     if (v->item_cmp && v->size) {
         if (num_sorting_errors==0) printf("\tsorting: OK.\n");
-        else printf("\tsorting: NO (%lu sorting errors detected).\n",num_sorting_errors);
+        else printf("\tsorting: NO (%" CV_SIZE_T_FORMATTING " sorting errors detected).\n",num_sorting_errors);
     }
     printf("\tmemory_used: ");cv_display_bytes(mem_used);
     printf(". memory_minimal_possible: ");cv_display_bytes(mem_minimal);

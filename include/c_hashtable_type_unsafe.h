@@ -55,10 +55,13 @@ freely, subject to the following restrictions:
 #ifndef C_HASHTABLE_TYPE_UNSAFE_H
 #define C_HASHTABLE_TYPE_UNSAFE_H
 
-#define C_HASHTABLE_TYPE_UNSAFE_VERSION         "1.06"
+#define C_HASHTABLE_TYPE_UNSAFE_VERSION         "1.06 rev2"
 #define C_HASHTABLE_TYPE_UNSAFE_VERSION_NUM     0106
 
 /* HISTORY:
+   C_HASHTABLE_TYPE_UNSAFE_VERSION_NUM 106 rev2
+   -> added the CV_SIZE_T_FORMATTING definition (internal usage).
+
    C_HASHTABLE_TYPE_UNSAFE_VERSION_NUM 106
    -> Added code to silence some compiler warnings (see: COMPILER_SUPPORTS_GCC_DIAGNOSTIC definition)
 	
@@ -104,6 +107,16 @@ freely, subject to the following restrictions:
 #   define CH_HAS_MOVE_SEMANTICS
 #endif
 
+#ifndef CV_SIZE_T_FORMATTING
+#   if ((defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L) || (defined(_MSC_VER) && _MSC_VER>1800))    /* 1800 -> Visual C++ 2013; 1900 ->  Visual C++ 2015 */
+       /* Problem: I'm not sure which Visual C++ version started supporting the C99 printf "%zu" (or at least "%llu") formatting syntax.
+          Visual C++ 2013 finally added support for various C99 features in its C mode (including designated initializers, compound literals, and the _Bool type), though it was still not complete.
+          Visual C++ 2015 further improved the C99 support, with full support of the C99 Standard Library, except for features that require C99 language features not yet supported by the compiler */
+#      define CV_SIZE_T_FORMATTING "zu"
+#   else
+#      define CV_SIZE_T_FORMATTING "lu"    /* C89 fallback (loses precision and there might be a compiler warning) */
+#   endif
+#endif /* CV_SIZE_T_FORMATTING */
 
 #if (defined (NDEBUG) || defined (_NDEBUG))
 #   undef CH_NO_ASSERT
@@ -239,7 +252,7 @@ CH_API void ch_display_bytes(size_t bytes_in)   {
     for (i=0;i<5;i++)   {
         if (pTGMKB[i]!=0) {
             if (cnt>0) printf(" ");
-            printf("%lu %s",pTGMKB[i],names[i]);
+            printf("%" CV_SIZE_T_FORMATTING " %s",pTGMKB[i],names[i]);
             ++cnt;
         }
     }
@@ -811,7 +824,7 @@ CH_API_DEF int chashtable_dbg_check(const chashtable* ht) {
                             /* When this happens, it can be a wrong user 'key_cmp' function (that cannot sort keys in a consistent way) */
                             ++num_sorting_errors;
 #                       ifndef CH_NO_STDIO
-                            fprintf(stderr,"[chashtable_dbg_check] Sorting Error (%lu): in bucket[%lu]: key_cmp(%lu,%lu)>0 [num_items=%lu (in bucket)]\n",num_sorting_errors,i,j-1,j,bck->size);
+                            fprintf(stderr,"[chashtable_dbg_check] Sorting Error (%" CV_SIZE_T_FORMATTING "): in bucket[%" CV_SIZE_T_FORMATTING "]: key_cmp(%" CV_SIZE_T_FORMATTING ",%" CV_SIZE_T_FORMATTING ")>0 [num_items=%" CV_SIZE_T_FORMATTING " (in bucket)]\n",num_sorting_errors,i,j-1,j,bck->size);
 #                       endif
                         }
                     }
@@ -856,7 +869,7 @@ CH_API_DEF int chashtable_dbg_check(const chashtable* ht) {
     }
 #   ifndef CH_NO_STDIO    
     printf("[chashtable_dbg_check]:\n");
-    printf("\tnum_total_items=%lu (num_total_capacity=%lu) in %d buckets [items per bucket: mean=%1.3f std_deviation=%1.3f min=%lu (in %lu/%d) avg=%lu (in %lu/%d) max=%lu (in %lu/%d)].\n",num_total_items,num_total_capacity,CH_NUM_USED_BUCKETS,avg_num_bucket_items,std_deviation,min_num_bucket_items,min_cnt,CH_NUM_USED_BUCKETS,avg_round,avg_cnt,CH_NUM_USED_BUCKETS,max_num_bucket_items,max_cnt,CH_NUM_USED_BUCKETS);
+    printf("\tnum_total_items=%" CV_SIZE_T_FORMATTING " (num_total_capacity=%" CV_SIZE_T_FORMATTING ") in %d buckets [items per bucket: mean=%1.3f std_deviation=%1.3f min=%" CV_SIZE_T_FORMATTING " (in %" CV_SIZE_T_FORMATTING "/%d) avg=%" CV_SIZE_T_FORMATTING " (in %" CV_SIZE_T_FORMATTING "/%d) max=%" CV_SIZE_T_FORMATTING " (in %" CV_SIZE_T_FORMATTING "/%d)].\n",num_total_items,num_total_capacity,CH_NUM_USED_BUCKETS,avg_num_bucket_items,std_deviation,min_num_bucket_items,min_cnt,CH_NUM_USED_BUCKETS,avg_round,avg_cnt,CH_NUM_USED_BUCKETS,max_num_bucket_items,max_cnt,CH_NUM_USED_BUCKETS);
     printf("\tmemory_used: ");ch_display_bytes(mem_used);
     printf(". memory_minimal_possible: ");ch_display_bytes(mem_minimal);
     printf(". mem_used_percentage: %1.2f%% (100%% is the best possible result).\n",mem_used_percentage);
@@ -892,7 +905,7 @@ CH_API_DEF void chashtable_cpy(chashtable* a,const chashtable* b) {
 	CH_ASSERT(a->value_size_in_bytes==b->value_size_in_bytes);
     if (a->key_size_in_bytes!=b->key_size_in_bytes || a->value_size_in_bytes!=b->value_size_in_bytes)   {
 #       ifndef CH_NO_STDIO
-        fprintf(stderr,"[chashtable_cpy] Error: two hashtables with different 'key_size_in_bytes' (%lu and %lu) or 'value_size_in_bytes' (%lu and %lu) can't be copied.\n",a->key_size_in_bytes,b->key_size_in_bytes,a->value_size_in_bytes,b->value_size_in_bytes);
+        fprintf(stderr,"[chashtable_cpy] Error: two hashtables with different 'key_size_in_bytes' (%" CV_SIZE_T_FORMATTING " and %" CV_SIZE_T_FORMATTING ") or 'value_size_in_bytes' (%" CV_SIZE_T_FORMATTING " and %" CV_SIZE_T_FORMATTING ") can't be copied.\n",a->key_size_in_bytes,b->key_size_in_bytes,a->value_size_in_bytes,b->value_size_in_bytes);
 #       endif
         return;
     }	

@@ -257,6 +257,7 @@ static void SimpleTest(void)   {
     /* display all items */
     p = (const mystruct*) v.v; /* of course this pointer can be reallocated and must be set soon before usage */
     for (i=0;i<v.size;i++) printf("v[%lu]={\t%d,\t%d,\t%d};\n",i,p[i].a,p[i].b,p[i].c);
+    /* Please note that the correct formatting syntax for size_t is %zu, but it's C99 specific (and %llu too). So we use the %lu syntax */
 
     /* remove element 1 */
     if (cvector_remove_at(&v,1))	printf("Removed item 1.\n");

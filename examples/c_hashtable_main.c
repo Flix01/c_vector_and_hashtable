@@ -212,6 +212,7 @@ static void SimpleTest(void)    {
         for (j=0;j<bucket->size;j++)	{
             const mykey_myvalue* pitem = &bucket->v[j];
             printf("%lu) ht[\t%d,\t%d,\t%d]\t=\t[\"%s\"].\n",k++,pitem->k.a,pitem->k.b,pitem->k.c,pitem->v.name);
+            /* Please note that the correct formatting syntax for size_t is %zu, but it's C99 specific (and %llu too). So we use the %lu syntax */
         }
     }
     /* Please note that the user defined, type-safe definition 'CH_NUM_BUCKETS_mykey_myvalue'

@@ -241,7 +241,7 @@ static void SimpleTest(void)   {
     cv_mystruct_push_back(&v,&(mystruct){10,20,30});
 #	endif*/
 
-    /* display all items */
+    /* display all items */ /* Please note that the correct formatting syntax for size_t is %zu, but it's C99 specific (and %llu too). So we use the %lu syntax */
     for (i=0;i<v.size;i++) printf("v[%lu]={\t%d,\t%d,\t%d};\n",i,v.v[i].a,v.v[i].b,v.v[i].c);
 
     /* remove element 1 */
