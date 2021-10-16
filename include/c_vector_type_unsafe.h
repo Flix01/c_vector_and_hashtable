@@ -34,6 +34,7 @@ freely, subject to the following restrictions:
                                         // by doing so "c_vector_type_unsafe.h" becomes lighter, when used without its implementation.
    CV_FORCE_MEMCPY_S                    // it enforces the use of memcpy_s(...) and similar functions (but the standard and safer way is to define __STDC_WANT_LIB_EXT1__. Please see: https://en.cppreference.com/w/c/string/byte/memcpy).
    CV_NO_MEMCPY_S                       // it forces the use of memcpy(...) and similar functions, in cases where memcpy_s(...) is used by default (currently only Visual Studio 2005 (8.0) or newer).
+   CV_NO_CVH_SERIALIZER_T               // it disables the 'cvh_serializer_t' struct and functions, and removes cvector_serialize(...)/cvector_deserialize(...) and cvh_string_serialize(...)/cvh_string_deserialize(...).
    CV_NO_CVH_STRING_T                   // it disables the 'cvh_string_t' struct and functions.
    CV_NO_PLACEMENT_NEW                  // (c++ mode only) it does not define (unused) helper stuff like: CV_PLACEMENT_NEW, cpp_ctr_tu,cpp_dtr_tu,cpp_cpy_tu,cpp_cmp_tu
 
@@ -55,10 +56,14 @@ freely, subject to the following restrictions:
 #ifndef C_VECTOR_TYPE_UNSAFE_H
 #define C_VECTOR_TYPE_UNSAFE_H
 
-#define C_VECTOR_TYPE_UNSAFE_VERSION            "1.09"
+#define C_VECTOR_TYPE_UNSAFE_VERSION            "1.09 rev2"
 #define C_VECTOR_TYPE_UNSAFE_VERSION_NUM        0109
 
 /* HISTORY
+   C_VECTOR_TYPE_UNSAFE_VERSION_NUM 109 rev2
+   -> Added CV_NO_CVH_SERIALIZER_T to remove the 'cvh_serializer_t' struct and functions, cvector_serialize(...)/cvector_deserialize(...) functions, cvh_string_serialize(...)/cvh_string_deserialize(...) functions.
+   -> Added the CV_API_CPP_DEC and CV_API_CPP_DEF definition (used internally).
+
    C_VECTOR_TYPE_UNSAFE_VERSION_NUM 109
    -> Removed CV_DISABLE_CLEARING_ITEM_MEMORY (now it's the default).
    -> Added CV_ENABLE_CLEARING_ITEM_MEMORY.
@@ -188,12 +193,24 @@ freely, subject to the following restrictions:
 #	ifndef CV_API_DEF
 #		define CV_API_DEF CV_API
 #	endif
+#	ifndef CV_API_CPP_DEC
+#		define CV_API_CPP_DEC CV_API_INL
+#	endif
+#	ifndef CV_API_CPP_DEF
+#		define CV_API_CPP_DEF CV_API_INL
+#	endif
 #else /* CV_ENABLE_DECLARATION_AND_DEFINITION */
 #	ifndef CV_API_DEC
 #		define CV_API_DEC CV_API_INL extern
 #	endif
 #	ifndef CV_API_DEF
 #		define CV_API_DEF /* no-op */
+#	endif
+#	ifndef CV_API_CPP_DEC
+#		define CV_API_CPP_DEC /* no-op */
+#	endif
+#	ifndef CV_API_CPP_DEF
+#		define CV_API_CPP_DEF /* no-op */
 #	endif
 #endif /* CV_ENABLE_DECLARATION_AND_DEFINITION */
 
@@ -290,6 +307,7 @@ CV_API void cv_display_bytes(size_t bytes_in)   {
 #endif /* CV_NO_STDIO */
 #endif /* CV_COMMON_FUNCTIONS_GUARD */
 
+#ifndef CV_NO_CVH_SERIALIZER_T
 #ifndef CVH_SRIALIZER_GUARD_
 /* cvh_serializer_t provides serialization/deserialization support to the cvector struct */
 typedef struct cvh_serializer_t {
@@ -340,18 +358,18 @@ typedef struct cvh_serializer_t {
     int (*const read_blob)(const struct cvh_serializer_t* d,void** pblob,size_t* blob_size_out,void* (*my_realloc)(void*,size_t)/*=NULL*/,void (*my_free)(void*)/*=NULL*/);
 #   endif /* CV_DISABLE_FAKE_MEMBER_FUNCTIONS */
 #   ifdef __cplusplus
-    CV_API_INL cvh_serializer_t();
-    CV_API_INL cvh_serializer_t(const cvh_serializer_t& o);
-    CV_API_INL cvh_serializer_t& operator=(const cvh_serializer_t& o);
-    CV_API_INL ~cvh_serializer_t();
+    CV_API_CPP_DEC cvh_serializer_t();
+    CV_API_CPP_DEC cvh_serializer_t(const cvh_serializer_t& o);
+    CV_API_CPP_DEC cvh_serializer_t& operator=(const cvh_serializer_t& o);
+    CV_API_CPP_DEC ~cvh_serializer_t();
 #       ifdef CV_HAS_MOVE_SEMANTICS
-        CV_API_INL cvh_serializer_t(cvh_serializer_t&& o);
-        CV_API_INL cvh_serializer_t& operator=(cvh_serializer_t&& o);
+        CV_API_CPP_DEC cvh_serializer_t(cvh_serializer_t&& o);
+        CV_API_CPP_DEC cvh_serializer_t& operator=(cvh_serializer_t&& o);
 #       endif /* CV_HAS_MOVE_SEMANTICS */
 #   endif /*__cplusplus*/
 } cvh_serializer_t;
 #endif /* CVH_SRIALIZER_GUARD_ */
-
+#endif /* CV_NO_CVH_SERIALIZER_T */
 
 typedef struct cvector cvector;
 struct cvector {
@@ -364,9 +382,10 @@ struct cvector {
     void (*const item_ctr)(void*);							/* optional (can be NULL) */
     void (*const item_dtr)(void*);							/* optional (can be NULL) */
     void (*const item_cpy)(void*,const void*);				/* optional (can be NULL) */
-    void (*const item_serialize)(const void*,cvh_serializer_t*);    /* optional (can be NULL) */
-    int  (*const item_deserialize)(void*,const cvh_serializer_t*);  /* optional (can be NULL) */
-
+#       ifndef CV_NO_CVH_SERIALIZER_T
+        void (*const item_serialize)(const void*,cvh_serializer_t*);    /* optional (can be NULL) */
+        int  (*const item_deserialize)(void*,const cvh_serializer_t*);  /* optional (can be NULL) */
+#       endif /* CV_NO_CVH_SERIALIZER_T */
 #   ifndef CV_DISABLE_FAKE_MEMBER_FUNCTIONS  /* must be defined glabally (in the Project Options)) */
     void (* const free)(cvector* v);
     void (* const clear)(cvector* v);
@@ -386,23 +405,25 @@ struct cvector {
     int (* const remove_range_at)(cvector* v,size_t start_item_position,size_t num_items_to_remove);
     void (* const cpy)(cvector* a,const cvector* b);
     void (* const dbg_check)(const cvector* v);
-    void (* const serialize)(const cvector* v,cvh_serializer_t* serializer);
-    int  (* const deserialize)(cvector* v,const cvh_serializer_t* deserializer);
+#       ifndef CV_NO_CVH_SERIALIZER_T
+        void (* const serialize)(const cvector* v,cvh_serializer_t* serializer);
+        int  (* const deserialize)(cvector* v,const cvh_serializer_t* deserializer);
+#       endif /* CV_NO_CVH_SERIALIZER_T */
 #   endif
 
 #   ifdef __cplusplus
-    cvector();
-    cvector(const cvector& o);
-    cvector& operator=(const cvector& o);
+    CV_API_CPP_DEC cvector();
+    CV_API_CPP_DEC cvector(const cvector& o);
+    CV_API_CPP_DEC cvector& operator=(const cvector& o);
 
     template<typename T> CV_API_INL T& at(size_t i) {CV_ASSERT(i<size);T* p=(T*)v;return p[i];}
     template<typename T> CV_API_INL const T& at(size_t i) const {CV_ASSERT(i<size);const T* p=(const T*)v;return p[i];}
 
 #   ifdef CV_HAS_MOVE_SEMANTICS
-    cvector(cvector&& o);
-    cvector& operator=(cvector&& o);
+    CV_API_CPP_DEC cvector(cvector&& o);
+    CV_API_CPP_DEC cvector& operator=(cvector&& o);
 #   endif
-    ~cvector();
+    CV_API_CPP_DEC ~cvector();
 #   endif
 };
 
@@ -426,17 +447,21 @@ CV_API_DEC int cvector_remove_range_at(cvector* v,size_t start_item_position,siz
 CV_API_DEC void cvector_cpy(cvector* a,const cvector* b);
 CV_API_DEC void cvector_shrink_to_fit(cvector* v);
 CV_API_DEC void cvector_dbg_check(const cvector* v);
+#ifndef CV_NO_CVH_SERIALIZER_T
 CV_API_DEC void cvector_serialize(const cvector* v,cvh_serializer_t* serializer);
 CV_API_DEC int  cvector_deserialize(cvector* v,const cvh_serializer_t* deserializer);
-CV_API_DEC void cvector_init_with(cvector* v,size_t item_size_in_bytes,int (*item_cmp)(const void*,const void*),void (*item_ctr)(void*),void (*item_dtr)(void*),void (*item_cpy)(void*,const void*),
-                                  void (*item_serialize)(const void*,cvh_serializer_t*),int (*item_deserialize)(void*,const cvh_serializer_t*));
+#   define CV_CVECTOR_CREATE_ARGS_SERIALIZER_CHUNK0    ,void (*item_serialize)(const void*,cvh_serializer_t*),int (*item_deserialize)(void*,const cvh_serializer_t*)
+#else /* CV_NO_CVH_SERIALIZER_T */
+#   define CV_CVECTOR_CREATE_ARGS_SERIALIZER_CHUNK0    /* no-op */
+#endif /* CV_NO_CVH_SERIALIZER_T */
+CV_API_DEC void cvector_init_with(cvector* v,size_t item_size_in_bytes,int (*item_cmp)(const void*,const void*),void (*item_ctr)(void*),void (*item_dtr)(void*),void (*item_cpy)(void*,const void*) CV_CVECTOR_CREATE_ARGS_SERIALIZER_CHUNK0);
 CV_API_DEC void cvector_init(cvector* v,size_t item_size_in_bytes,int (*item_cmp)(const void*,const void*));
-CV_API_DEC cvector cvector_create_with(size_t item_size_in_bytes,int (*item_cmp)(const void*,const void*),void (*item_ctr)(void*),void (*item_dtr)(void*),void (*item_cpy)(void*,const void*),
-                                       void (*item_serialize)(const void*,cvh_serializer_t*),int (*item_deserialize)(void*,const cvh_serializer_t*));
+CV_API_DEC cvector cvector_create_with(size_t item_size_in_bytes,int (*item_cmp)(const void*,const void*),void (*item_ctr)(void*),void (*item_dtr)(void*),void (*item_cpy)(void*,const void*) CV_CVECTOR_CREATE_ARGS_SERIALIZER_CHUNK0);
 CV_API_DEC cvector cvector_create(size_t item_size_in_bytes,int (*item_cmp)(const void*,const void*));
-
+#   undef CV_CVECTOR_CREATE_ARGS_SERIALIZER_CHUNK0
 
 /* cvh_serializer function declarations */
+#ifndef CV_NO_CVH_SERIALIZER_T
 #ifndef CVH_SRIALIZER_GUARD_
 CV_API_DEC void cvh_serializer_reserve(cvh_serializer_t* p,size_t new_capacity);
 CV_API_DEC void cvh_serializer_free(cvh_serializer_t* p);
@@ -482,7 +507,7 @@ CV_API_DEC int cvh_serializer_read_blob(const cvh_serializer_t* d,void** pblob,s
 CV_API_DEC void cvh_serializer_init(cvh_serializer_t* p);
 CV_API_DEC cvh_serializer_t cvh_serializer_create(void);
 #endif /* CVH_SRIALIZER_GUARD_ */
-
+#endif /* CV_NO_CVH_SERIALIZER_T */
 
 /* cvh_string_t struct and function declarations */
 #ifndef CV_NO_CVH_STRING_T
@@ -496,18 +521,20 @@ typedef struct cvh_string_t {
     void (*const free)(struct cvh_string_t* p);
     void (*const clear)(struct cvh_string_t* p);
     void (*const cpy)(struct cvh_string_t* dst,const struct cvh_string_t* src);
-    void (*const serialize)(const struct cvh_string_t* p,cvh_serializer_t* s);
-    int (*const deserialize)(struct cvh_string_t* p,const cvh_serializer_t* d);
+#       ifndef CV_NO_CVH_SERIALIZER_T
+        void (*const serialize)(const struct cvh_string_t* p,cvh_serializer_t* s);
+        int (*const deserialize)(struct cvh_string_t* p,const cvh_serializer_t* d);
+#       endif /* CV_NO_CVH_SERIALIZER_T */
 #   endif /* CV_DISABLE_FAKE_MEMBER_FUNCTIONS */
 #   ifdef __cplusplus
-    CV_API_INL cvh_string_t();
-    CV_API_INL cvh_string_t(const cvh_string_t& o);
-    CV_API_INL cvh_string_t& operator=(const cvh_string_t& o);
-    CV_API_INL const char* operator[](size_t i) const;
-    CV_API_INL ~cvh_string_t();
+    CV_API_CPP_DEC cvh_string_t();
+    CV_API_CPP_DEC cvh_string_t(const cvh_string_t& o);
+    CV_API_CPP_DEC cvh_string_t& operator=(const cvh_string_t& o);
+    CV_API_CPP_DEC const char* operator[](size_t i) const;
+    CV_API_CPP_DEC ~cvh_string_t();
 #       ifdef CV_HAS_MOVE_SEMANTICS
-        CV_API_INL cvh_string_t(cvh_string_t&& o);
-        CV_API_INL cvh_string_t& operator=(cvh_string_t&& o);
+        CV_API_CPP_DEC cvh_string_t(cvh_string_t&& o);
+        CV_API_CPP_DEC cvh_string_t& operator=(cvh_string_t&& o);
 #       endif /* CV_HAS_MOVE_SEMANTICS */
 #   endif  /*__cplusplus*/
 } cvh_string_t;
@@ -516,8 +543,10 @@ CV_API_DEC size_t cvh_string_push_back(cvh_string_t* p,const char* str_beg,const
 CV_API_DEC void cvh_string_free(cvh_string_t* p);
 CV_API_DEC void cvh_string_cpy(cvh_string_t* dst,const cvh_string_t* src);
 CV_API_DEC void cvh_string_clear(cvh_string_t* p);
-CV_API_DEC void cvh_string_serialize(const cvh_string_t* p,cvh_serializer_t* s);
-CV_API_DEC int cvh_string_deserialize(cvh_string_t* p,const cvh_serializer_t* d);
+#   ifndef CV_NO_CVH_SERIALIZER_T
+    CV_API_DEC void cvh_string_serialize(const cvh_string_t* p,cvh_serializer_t* s);
+    CV_API_DEC int cvh_string_deserialize(cvh_string_t* p,const cvh_serializer_t* d);
+#   endif /* CV_NO_CVH_SERIALIZER_T */
 CV_API_DEC void cvh_string_init(cvh_string_t* p);
 CV_API_DEC cvh_string_t cvh_string_create(void);
 #endif /* CVH_STRING_GUARD_ */
@@ -545,6 +574,7 @@ CV_API_DEC cvh_string_t cvh_string_create(void);
 
 
 /* cvh_serializer function dfinition */
+#ifndef CV_NO_CVH_SERIALIZER_T
 #ifndef CVH_SRIALIZER_GUARD_
 
 CV_API_DEF void cvh_serializer_reserve(cvh_serializer_t* p,size_t new_capacity)    {
@@ -748,13 +778,13 @@ CV_API_DEF cvh_serializer_t cvh_serializer_create(void) {cvh_serializer_t p;cvh_
 #   else    /*CV_DISABLE_FAKE_MEMBER_FUNCTIONS*/
 #       define CV_SERIALIZER_MF_CHUNK0  /* no-op */
 #   endif   /*CV_DISABLE_FAKE_MEMBER_FUNCTIONS*/
-    CV_API_INL cvh_serializer_t::cvh_serializer_t() : v(NULL),size(0),capacity(0),offset(0) CV_SERIALIZER_MF_CHUNK0 {}
-    CV_API_INL cvh_serializer_t::cvh_serializer_t(const cvh_serializer_t& o)  : v(NULL),size(0),capacity(0),offset(0) CV_SERIALIZER_MF_CHUNK0 {cvh_serializer_cpy(this,&o);}
-    CV_API_INL cvh_serializer_t& cvh_serializer_t::operator=(const cvh_serializer_t& o) {cvh_serializer_cpy(this,&o);return *this;}
-    CV_API_INL cvh_serializer_t::~cvh_serializer_t()    {cvh_serializer_free(this);}
+    CV_API_CPP_DEF cvh_serializer_t::cvh_serializer_t() : v(NULL),size(0),capacity(0),offset(0) CV_SERIALIZER_MF_CHUNK0 {}
+    CV_API_CPP_DEF cvh_serializer_t::cvh_serializer_t(const cvh_serializer_t& o)  : v(NULL),size(0),capacity(0),offset(0) CV_SERIALIZER_MF_CHUNK0 {cvh_serializer_cpy(this,&o);}
+    CV_API_CPP_DEF cvh_serializer_t& cvh_serializer_t::operator=(const cvh_serializer_t& o) {cvh_serializer_cpy(this,&o);return *this;}
+    CV_API_CPP_DEF cvh_serializer_t::~cvh_serializer_t()    {cvh_serializer_free(this);}
 #       ifdef CV_HAS_MOVE_SEMANTICS
-        CV_API_INL cvh_serializer_t::cvh_serializer_t(cvh_serializer_t&& o) : v(o.v),size(o.size),capacity(o.capacity),offset(o.offset) CV_SERIALIZER_MF_CHUNK0 {o.v=NULL;*((size_t*)&o.size)=0;*((size_t*)&o.capacity)=0;*((size_t*)&o.offset)=0;}
-        CV_API_INL cvh_serializer_t& cvh_serializer_t::operator=(cvh_serializer_t&& o)  {
+        CV_API_CPP_DEF cvh_serializer_t::cvh_serializer_t(cvh_serializer_t&& o) : v(o.v),size(o.size),capacity(o.capacity),offset(o.offset) CV_SERIALIZER_MF_CHUNK0 {o.v=NULL;*((size_t*)&o.size)=0;*((size_t*)&o.capacity)=0;*((size_t*)&o.offset)=0;}
+        CV_API_CPP_DEF cvh_serializer_t& cvh_serializer_t::operator=(cvh_serializer_t&& o)  {
             if (this != &o) {
                 cvh_serializer_free(this);
                 v=o.v;
@@ -769,6 +799,7 @@ CV_API_DEF cvh_serializer_t cvh_serializer_create(void) {cvh_serializer_t p;cvh_
 
 #define CVH_SRIALIZER_GUARD_
 #endif /* CVH_SRIALIZER_GUARD_ */
+#endif /* CV_NO_CVH_SERIALIZER_T */
 
 /* cvh_string_t function definitions */
 #ifndef CV_NO_CVH_STRING_T
@@ -798,6 +829,7 @@ CV_API_DEF void cvh_string_cpy(cvh_string_t* dst,const cvh_string_t* src)   {
     CV_MEMCPY(dst->v,src->v,src->size);dst->size = src->size;
 }
 CV_API_DEF void cvh_string_clear(cvh_string_t* p)   {p->size=0;}
+#ifndef CV_NO_CVH_SERIALIZER_T
 CV_API_DEF void cvh_string_serialize(const cvh_string_t* p,cvh_serializer_t* s)    {
     const size_t size_t_size_in_bytes = sizeof(size_t);
     const size_t p_v_size_in_bytes = p->size;
@@ -817,6 +849,7 @@ CV_API_DEF int cvh_string_deserialize(cvh_string_t* p,const cvh_serializer_t* d)
     CV_MEMCPY(p->v,&d->v[d->offset],psize);*((size_t*)&d->offset)+=psize;p->size=psize;
     return 1;
 }
+#endif /* CV_NO_CVH_SERIALIZER_T */
 CV_API_DEF void cvh_string_init(cvh_string_t* p)   {
     CV_MEMSET(p,0,sizeof(*p));
 #   ifndef CV_DISABLE_FAKE_MEMBER_FUNCTIONS
@@ -825,34 +858,43 @@ CV_API_DEF void cvh_string_init(cvh_string_t* p)   {
     typedef size_t (* push_back_type)(cvh_string_t*,const char*,const char*);
     typedef void (*clear_free_type)(cvh_string_t*);
     typedef void (*cpy_type)(cvh_string_t*,const cvh_string_t*);
-    typedef void (*serialize_type)(const cvh_string_t*,cvh_serializer_t*);
-    typedef int (*deserialize_type)(cvh_string_t*,const cvh_serializer_t*);
+#       ifndef CV_NO_CVH_SERIALIZER_T
+        typedef void (*serialize_type)(const cvh_string_t*,cvh_serializer_t*);
+        typedef int (*deserialize_type)(cvh_string_t*,const cvh_serializer_t*);
+#       endif /* CV_NO_CVH_SERIALIZER_T */
     *((reserve_type*)&p->reserve)=&cvh_string_reserve;
     *((push_back_type*)&p->push_back)=&cvh_string_push_back;
     *((clear_free_type*)&p->clear)=&cvh_string_clear;
     *((clear_free_type*)&p->free)=&cvh_string_free;
     *((cpy_type*)&p->cpy)=&cvh_string_cpy;
-    *((serialize_type*)&p->serialize)=&cvh_string_serialize;
-    *((deserialize_type*)&p->deserialize)=&cvh_string_deserialize;
+#       ifndef CV_NO_CVH_SERIALIZER_T
+        *((serialize_type*)&p->serialize)=&cvh_string_serialize;
+        *((deserialize_type*)&p->deserialize)=&cvh_string_deserialize;
+#       endif /* CV_NO_CVH_SERIALIZER_T */
     }
 #   endif /* CV_DISABLE_FAKE_MEMBER_FUNCTIONS */
 }
 CV_API_DEF cvh_string_t cvh_string_create(void)   {cvh_string_t v;cvh_string_init(&v);return v;}
 #ifdef __cplusplus
 #   ifndef CV_DISABLE_FAKE_MEMBER_FUNCTIONS
-#       define CV_CPP_STRINGT_CHUNK0    ,reserve(&cvh_string_reserve),push_back(&cvh_string_push_back),free(&cvh_string_free),clear(&cvh_string_clear),  \
-                                        cpy(&cvh_string_cpy),serialize(cvh_string_serialize),deserialize(&cvh_string_deserialize)
+#       ifndef CV_NO_CVH_SERIALIZER_T
+#           define CV_CPP_STRINGT_CHUNK0    ,reserve(&cvh_string_reserve),push_back(&cvh_string_push_back),free(&cvh_string_free),clear(&cvh_string_clear),  \
+                                            cpy(&cvh_string_cpy),serialize(cvh_string_serialize),deserialize(&cvh_string_deserialize)
+#       else /* CV_NO_CVH_SERIALIZER_T */
+#           define CV_CPP_STRINGT_CHUNK0    ,reserve(&cvh_string_reserve),push_back(&cvh_string_push_back),free(&cvh_string_free),clear(&cvh_string_clear),  \
+                                            cpy(&cvh_string_cpy)
+#       endif /* CV_NO_CVH_SERIALIZER_T */
 #   else /* CV_DISABLE_FAKE_MEMBER_FUNCTIONS */
 #       define CV_CPP_STRINGT_CHUNK0    /* no-op */
 #   endif /* CV_DISABLE_FAKE_MEMBER_FUNCTIONS */
-    CV_API_INL cvh_string_t::cvh_string_t() : v(NULL),size(0),capacity(0) CV_CPP_STRINGT_CHUNK0 {}
-    CV_API_INL cvh_string_t::cvh_string_t(const cvh_string_t& o) : v(NULL),size(0),capacity(0) CV_CPP_STRINGT_CHUNK0 {cvh_string_cpy(this,&o);}
-    CV_API_INL cvh_string_t& cvh_string_t::operator=(const cvh_string_t& o) {cvh_string_cpy(this,&o);return *this;}
-    CV_API_INL const char* cvh_string_t::operator[](size_t i) const {CV_ASSERT(i<size);return &v[i];}
-    CV_API_INL cvh_string_t::~cvh_string_t() {cvh_string_free(this);}
+    CV_API_CPP_DEF cvh_string_t::cvh_string_t() : v(NULL),size(0),capacity(0) CV_CPP_STRINGT_CHUNK0 {}
+    CV_API_CPP_DEF cvh_string_t::cvh_string_t(const cvh_string_t& o) : v(NULL),size(0),capacity(0) CV_CPP_STRINGT_CHUNK0 {cvh_string_cpy(this,&o);}
+    CV_API_CPP_DEF cvh_string_t& cvh_string_t::operator=(const cvh_string_t& o) {cvh_string_cpy(this,&o);return *this;}
+    CV_API_CPP_DEF const char* cvh_string_t::operator[](size_t i) const {CV_ASSERT(i<size);return &v[i];}
+    CV_API_CPP_DEF cvh_string_t::~cvh_string_t() {cvh_string_free(this);}
 #   ifdef CV_HAS_MOVE_SEMANTICS
-        CV_API_INL cvh_string_t::cvh_string_t(cvh_string_t&& o) : v(o.v),size(o.size),capacity(o.capacity) CV_CPP_STRINGT_CHUNK0 {o.v=NULL;*((size_t*)&o.size)=0;*((size_t*)&o.capacity)=0;}
-        CV_API_INL cvh_string_t& cvh_string_t::operator=(cvh_string_t&& o)    {
+        CV_API_CPP_DEF cvh_string_t::cvh_string_t(cvh_string_t&& o) : v(o.v),size(o.size),capacity(o.capacity) CV_CPP_STRINGT_CHUNK0 {o.v=NULL;*((size_t*)&o.size)=0;*((size_t*)&o.capacity)=0;}
+        CV_API_CPP_DEF cvh_string_t& cvh_string_t::operator=(cvh_string_t&& o)    {
             if (this != &o) {
                 cvh_string_free(this);
                 v=o.v;
@@ -1163,7 +1205,11 @@ CV_API_DEF void cvector_cpy(cvector* a,const cvector* b) {
 }
 CV_API_DEF void cvector_shrink_to_fit(cvector* v)	{
     if (v)	{
-        cvector o = cvector_create_with(v->item_size_in_bytes,v->item_cmp,v->item_ctr,v->item_dtr,v->item_cpy,v->item_serialize,v->item_deserialize);
+        cvector o = cvector_create_with(v->item_size_in_bytes,v->item_cmp,v->item_ctr,v->item_dtr,v->item_cpy
+#       ifndef CV_NO_CVH_SERIALIZER_T
+                                        ,v->item_serialize,v->item_deserialize
+#       endif
+                                        );
         cvector_cpy(&o,v); /* now 'o' is 'v' trimmed */
         cvector_free(v);
         cvector_swap(&o,v);
@@ -1206,6 +1252,7 @@ CV_API_DEF void cvector_dbg_check(const cvector* v)  {
 #   endif
     /*CV_ASSERT(num_sorting_errors==0);*/ /* When this happens, it can be a wrong user 'itemKey_cmp' function (that cannot sort keys in a consistent way) */
 }
+#ifndef CV_NO_CVH_SERIALIZER_T
 CV_API_DEF void cvector_serialize(const cvector* v,cvh_serializer_t* serializer)    {
     const size_t size_t_size_in_bytes = sizeof(size_t);
     CV_ASSERT(v && serializer);
@@ -1252,15 +1299,24 @@ CV_API_DEF int  cvector_deserialize(cvector* v,const cvh_serializer_t* deseriali
     }
     return 1; /* we must return 1 on success */
 }
+#   define CV_CVECTOR_CREATE_ARGS_SERIALIZER_CHUNK0    ,void (*item_serialize)(const void*,cvh_serializer_t*),int (*item_deserialize)(void*,const cvh_serializer_t*)
+#   define CV_CVECTOR_CREATE_ARGS_SERIALIZER_CHUNK1    ,NULL,NULL
+#   define CV_CVECTOR_CREATE_ARGS_SERIALIZER_CHUNK2    ,item_serialize,item_deserialize
+#else /* CV_NO_CVH_SERIALIZER_T */
+#   define CV_CVECTOR_CREATE_ARGS_SERIALIZER_CHUNK0    /* no-op */
+#   define CV_CVECTOR_CREATE_ARGS_SERIALIZER_CHUNK1    /* no-op */
+#   define CV_CVECTOR_CREATE_ARGS_SERIALIZER_CHUNK2    /* no-op */
+#endif /* CV_NO_CVH_SERIALIZER_T */
 
 /* create methods */
-CV_API_DEF void cvector_init_with(cvector* v,size_t item_size_in_bytes,int (*item_cmp)(const void*,const void*),void (*item_ctr)(void*),void (*item_dtr)(void*),void (*item_cpy)(void*,const void*),
-                                  void (*item_serialize)(const void*,cvh_serializer_t*),int (*item_deserialize)(void*,const cvh_serializer_t*))	{
+CV_API_DEF void cvector_init_with(cvector* v,size_t item_size_in_bytes,int (*item_cmp)(const void*,const void*),void (*item_ctr)(void*),void (*item_dtr)(void*),void (*item_cpy)(void*,const void*) CV_CVECTOR_CREATE_ARGS_SERIALIZER_CHUNK0)	{
     typedef int (*item_cmp_type)(const void*,const void*);
 	typedef void (*item_ctr_dtr_type)(void*);
 	typedef void (*item_cpy_type)(void*,const void*);
-    typedef void (*item_serialize_type)(const void*,cvh_serializer_t*);
-    typedef int (*item_deserialize_type)(void*,const cvh_serializer_t*);
+#       ifndef CV_NO_CVH_SERIALIZER_T
+        typedef void (*item_serialize_type)(const void*,cvh_serializer_t*);
+        typedef int (*item_deserialize_type)(void*,const cvh_serializer_t*);
+#       endif /* CV_NO_CVH_SERIALIZER_T */
 #   ifndef CV_DISABLE_FAKE_MEMBER_FUNCTIONS  /* must be defined glabally (in the Project Options)) */
     typedef void (* free_clear_shrink_to_fit_pop_back_mf)(cvector*);
     typedef void (* swap_mf)(cvector*,cvector*);
@@ -1276,6 +1332,10 @@ CV_API_DEF void cvector_init_with(cvector* v,size_t item_size_in_bytes,int (*ite
     typedef int (* remove_range_at_mf)(cvector*,size_t,size_t);
     typedef void (* cpy_mf)(cvector*,const cvector*);
     typedef void (* dbg_check_mf)(const cvector*);
+#       ifndef CV_NO_CVH_SERIALIZER_T
+        typedef void (*serialize_mf)(const cvector*,cvh_serializer_t*);
+        typedef int (*deserialize_mf)(cvector*,const cvh_serializer_t*);
+#       endif /* CV_NO_CVH_SERIALIZER_T */
 #   endif
     CV_ASSERT(v);
     CV_ASSERT(item_size_in_bytes>0);
@@ -1285,8 +1345,10 @@ CV_API_DEF void cvector_init_with(cvector* v,size_t item_size_in_bytes,int (*ite
 	*((item_ctr_dtr_type*)&v->item_ctr)=item_ctr;
 	*((item_ctr_dtr_type*)&v->item_dtr)=item_dtr;
 	*((item_cpy_type*)&v->item_cpy)=item_cpy; 
-    *((item_serialize_type*)&v->item_serialize)=item_serialize;
-    *((item_deserialize_type*)&v->item_deserialize)=item_deserialize;
+#       ifndef CV_NO_CVH_SERIALIZER_T
+        *((item_serialize_type*)&v->item_serialize)=item_serialize;
+        *((item_deserialize_type*)&v->item_deserialize)=item_deserialize;
+#       endif /* CV_NO_CVH_SERIALIZER_T */
 #   ifndef CV_DISABLE_FAKE_MEMBER_FUNCTIONS  /* must be defined glabally (in the Project Options)) */
     *((free_clear_shrink_to_fit_pop_back_mf*)&v->free)=&cvector_free;
     *((free_clear_shrink_to_fit_pop_back_mf*)&v->clear)=&cvector_clear;
@@ -1306,58 +1368,74 @@ CV_API_DEF void cvector_init_with(cvector* v,size_t item_size_in_bytes,int (*ite
     *((remove_range_at_mf*)&v->remove_range_at)=&cvector_remove_range_at;
     *((cpy_mf*)&v->cpy)=&cvector_cpy;
     *((dbg_check_mf*)&v->dbg_check)=&cvector_dbg_check;
+#       ifndef CV_NO_CVH_SERIALIZER_T
+        *((serialize_mf*)&v->serialize)=&cvector_serialize;
+        *((deserialize_mf*)&v->deserialize)=&cvector_deserialize;
+#       endif /* CV_NO_CVH_SERIALIZER_T */
 #   endif
 }
-CV_API_DEF void cvector_init(cvector* v,size_t item_size_in_bytes,int (*item_cmp)(const void*,const void*))	{cvector_init_with(v,item_size_in_bytes,item_cmp,NULL,NULL,NULL,NULL,NULL);}
-CV_API_DEF cvector cvector_create_with(size_t item_size_in_bytes,int (*item_cmp)(const void*,const void*),void (*item_ctr)(void*),void (*item_dtr)(void*),void (*item_cpy)(void*,const void*),
-                                       void (*item_serialize)(const void*,cvh_serializer_t*),int (*item_deserialize)(void*,const cvh_serializer_t*))	{cvector v;cvector_init_with(&v,item_size_in_bytes,item_cmp,item_ctr,item_dtr,item_cpy,item_serialize,item_deserialize);return v;}
-CV_API_DEF cvector cvector_create(size_t item_size_in_bytes,int (*item_cmp)(const void*,const void*))	{return cvector_create_with(item_size_in_bytes,item_cmp,NULL,NULL,NULL,NULL,NULL);}
+CV_API_DEF void cvector_init(cvector* v,size_t item_size_in_bytes,int (*item_cmp)(const void*,const void*))	{cvector_init_with(v,item_size_in_bytes,item_cmp,NULL,NULL,NULL CV_CVECTOR_CREATE_ARGS_SERIALIZER_CHUNK1);}
+CV_API_DEF cvector cvector_create_with(size_t item_size_in_bytes,int (*item_cmp)(const void*,const void*),void (*item_ctr)(void*),void (*item_dtr)(void*),void (*item_cpy)(void*,const void*) CV_CVECTOR_CREATE_ARGS_SERIALIZER_CHUNK0)	{cvector v;cvector_init_with(&v,item_size_in_bytes,item_cmp,item_ctr,item_dtr,item_cpy CV_CVECTOR_CREATE_ARGS_SERIALIZER_CHUNK2);return v;}
+CV_API_DEF cvector cvector_create(size_t item_size_in_bytes,int (*item_cmp)(const void*,const void*))	{return cvector_create_with(item_size_in_bytes,item_cmp,NULL,NULL,NULL CV_CVECTOR_CREATE_ARGS_SERIALIZER_CHUNK1);}
+#   undef CV_CVECTOR_CREATE_ARGS_SERIALIZER_CHUNK0
+#   undef CV_CVECTOR_CREATE_ARGS_SERIALIZER_CHUNK1
+#   undef CV_CVECTOR_CREATE_ARGS_SERIALIZER_CHUNK2
 
 #ifdef __cplusplus
-    cvector::cvector() :
+#   ifndef CV_NO_CVH_SERIALIZER_T
+#       define CV_SERIALIZER_DEFINITION_CHUNK0 ,serialize(&cvector_serialize),deserialize(&cvector_deserialize)
+#       define CV_SERIALIZER_DEFINITION_CHUNK1 item_serialize(NULL),item_deserialize(NULL),
+#       define CV_SERIALIZER_DEFINITION_CHUNK2 item_serialize(o.item_serialize),item_deserialize(o.item_deserialize),
+#   else
+#       define CV_SERIALIZER_DEFINITION_CHUNK0 /* no-op */
+#       define CV_SERIALIZER_DEFINITION_CHUNK1 /* no-op */
+#       define CV_SERIALIZER_DEFINITION_CHUNK2 /* no-op */
+#   endif
+
+    CV_API_CPP_DEF cvector::cvector() :
     v(NULL),size(0),capacity(0),item_size_in_bytes(0),
-    item_cmp(NULL),item_ctr(NULL),item_dtr(NULL),item_cpy(NULL),item_serialize(NULL),item_deserialize(NULL),
+    item_cmp(NULL),item_ctr(NULL),item_dtr(NULL),item_cpy(NULL),CV_SERIALIZER_DEFINITION_CHUNK1
     free(&cvector_free),clear(&cvector_clear),shrink_to_fit(&cvector_shrink_to_fit),swap(&cvector_swap),
     reserve(&cvector_reserve),resize(&cvector_resize),resize_with(&cvector_resize_with),
     push_back(&cvector_push_back),pop_back(&cvector_pop_back),
     linear_search(&cvector_linear_search),binary_search(&cvector_binary_search),
     insert_at(&cvector_insert_at),insert_range_at(&cvector_insert_range_at),insert_sorted(&cvector_insert_sorted),
     remove_at(&cvector_remove_at),remove_range_at(&cvector_remove_range_at),
-    cpy(&cvector_cpy),dbg_check(&cvector_dbg_check),serialize(&cvector_serialize),deserialize(&cvector_deserialize)
+    cpy(&cvector_cpy),dbg_check(&cvector_dbg_check) CV_SERIALIZER_DEFINITION_CHUNK0
     {}
 
-    cvector::cvector(const cvector& o) :
+    CV_API_CPP_DEF cvector::cvector(const cvector& o) :
     v(NULL),size(0),capacity(0),item_size_in_bytes(o.item_size_in_bytes),
-    item_cmp(o.item_cmp),item_ctr(o.item_ctr),item_dtr(o.item_dtr),item_cpy(o.item_cpy),item_serialize(NULL),item_deserialize(NULL),
+    item_cmp(o.item_cmp),item_ctr(o.item_ctr),item_dtr(o.item_dtr),item_cpy(o.item_cpy),CV_SERIALIZER_DEFINITION_CHUNK1
     free(&cvector_free),clear(&cvector_clear),shrink_to_fit(&cvector_shrink_to_fit),swap(&cvector_swap),
     reserve(&cvector_reserve),resize(&cvector_resize),resize_with(&cvector_resize_with),
     push_back(&cvector_push_back),pop_back(&cvector_pop_back),
     linear_search(&cvector_linear_search),binary_search(&cvector_binary_search),
     insert_at(&cvector_insert_at),insert_range_at(&cvector_insert_range_at),insert_sorted(&cvector_insert_sorted),
     remove_at(&cvector_remove_at),remove_range_at(&cvector_remove_range_at),
-    cpy(&cvector_cpy),dbg_check(&cvector_dbg_check),serialize(&cvector_serialize),deserialize(&cvector_deserialize)
+    cpy(&cvector_cpy),dbg_check(&cvector_dbg_check) CV_SERIALIZER_DEFINITION_CHUNK0
     {
         cvector_cpy(this,&o);
     }
 
-    cvector& cvector::operator=(const cvector& o)    {cvector_cpy(this,&o);return *this;}
+    CV_API_CPP_DEF cvector& cvector::operator=(const cvector& o)    {cvector_cpy(this,&o);return *this;}
 
 #   ifdef CV_HAS_MOVE_SEMANTICS
-    cvector::cvector(cvector&& o) :
+    CV_API_CPP_DEF cvector::cvector(cvector&& o) :
     v(o.v),size(o.size),capacity(o.capacity),item_size_in_bytes(o.item_size_in_bytes),
-    item_cmp(o.item_cmp),item_ctr(o.item_ctr),item_dtr(o.item_dtr),item_cpy(o.item_cpy),item_serialize(o.item_serialize),item_deserialize(o.item_deserialize),
+    item_cmp(o.item_cmp),item_ctr(o.item_ctr),item_dtr(o.item_dtr),item_cpy(o.item_cpy),CV_SERIALIZER_DEFINITION_CHUNK2
     free(&cvector_free),clear(&cvector_clear),shrink_to_fit(&cvector_shrink_to_fit),swap(&cvector_swap),
     reserve(&cvector_reserve),resize(&cvector_resize),resize_with(&cvector_resize_with),
     push_back(&cvector_push_back),pop_back(&cvector_pop_back),
     linear_search(&cvector_linear_search),binary_search(&cvector_binary_search),
     insert_at(&cvector_insert_at),insert_range_at(&cvector_insert_range_at),insert_sorted(&cvector_insert_sorted),
     remove_at(&cvector_remove_at),remove_range_at(&cvector_remove_range_at),
-    cpy(&cvector_cpy),dbg_check(&cvector_dbg_check),serialize(&cvector_serialize),deserialize(&cvector_deserialize)
+    cpy(&cvector_cpy),dbg_check(&cvector_dbg_check) CV_SERIALIZER_DEFINITION_CHUNK0
     {
         o.v=NULL;*((size_t*)&o.size)=0;*((size_t*)&o.capacity)=0;
     }
 
-    cvector& cvector::operator=(cvector&& o)    {
+    CV_API_CPP_DEF cvector& cvector::operator=(cvector&& o)    {
         if (this != &o) {
             cvector_free(this);
             v=o.v;
@@ -1368,7 +1446,10 @@ CV_API_DEF cvector cvector_create(size_t item_size_in_bytes,int (*item_cmp)(cons
     }
 #   endif
 
-    cvector::~cvector() {cvector_free(this);}
+    CV_API_CPP_DEF cvector::~cvector() {cvector_free(this);}
+#   undef CV_SERIALIZER_DEFINITION_CHUNK0
+#   undef CV_SERIALIZER_DEFINITION_CHUNK1
+#   undef CV_SERIALIZER_DEFINITION_CHUNK2
 #endif
 
 #ifdef COMPILER_SUPPORTS_GCC_DIAGNOSTIC

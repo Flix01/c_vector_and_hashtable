@@ -377,7 +377,7 @@ static void string_cpy(void* av,const void* bv)    {
 /* if we need to serialize/deserialize our vector we need these 2 functions */
 /* because our 'item struct' (char*) contains (directly or indirectly) pointers */
 /* and cannot be deep-copied with plain memcpy calls */
-#define USE_LOW_LEVEL_SERIALIZATION /* very good exercise to understand how serialization works */
+/*#define USE_LOW_LEVEL_SERIALIZATION*/ /* very good exercise to understand how serialization works */
 static void string_serialize(const void* av,cvh_serializer_t* serializer)    {
     const string* a = (const string*) av;
 #   ifdef USE_LOW_LEVEL_SERIALIZATION
@@ -825,7 +825,7 @@ void CppTest(void)    {
        -> try to replace a single 'std::vector' with a 'cvector', keep the code compilable (in C++) and repeat the process
        -> a std::vector<cvector> is easier to setup than a cvector of std::vector<type>
        -> a cvector that includes (directly or indirectly) a std::vector (or any other STL container) is a bit harder to make it work, so it's better to avoid it if possible
-       -> 'cvector_init(...)' is still mandatory
+       -> 'cvector_init(...)' or 'cvector_create(...)' is still mandatory
        -> we can use 'v.at<type>(i)' as a quick replacement of STL operator[] (i.e. 'v[i]') (but it does not work in plain C, so we'll need to convert it later)
        -> cvector::~cvector() calls 'cvector_free(...)' for us (but in plain C it's not available. It can be useful to remember that it's harmless to call 'cvector_free(...)' multiple times)
        -> some programmers prefer using the 'fake member function' syntax when porting code from std::vector
@@ -842,7 +842,7 @@ void CppTest(void)    {
     cvector_init(&v1,sizeof(int),NULL);   /* 'cvector_init(...)' is still mandatory */
 
     for (i=0;i<5;i++) cvector_push_back(&v0,&tmp[i]); /* or v0.push_back(&v0,&tmp[i]) in the 'fake member function' syntax */
-    cvector_insert_range_at(&v1,&tmp[3],4,0);            /* or v1.insert_range_at(&v1,&tmp[3],4,0) in the 'fake member function' syntax */
+    cvector_insert_range_at(&v1,&tmp[3],4,0);         /* or v1.insert_range_at(&v1,&tmp[3],4,0) in the 'fake member function' syntax */
 
     for (i=0;i<v0.size;i++) printf("v0[%lu] = %d;\n",i,v0.at<int>(i));  /* Warning: '.at<type>(i)' is C++ specific */
     for (i=0;i<v1.size;i++) printf("v1[%lu] = %d;\n",i,v1.at<int>(i));
